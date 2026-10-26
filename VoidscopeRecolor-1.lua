@@ -8,9 +8,15 @@ local SHOT_WINDOW = 1.0          -- seconds after you fire during which new effe
 local SHOT_RADIUS = 30           -- studs from you within which a new effect counts as your shot
 local OVERLAY_TRANSPARENCY = 0.6 -- only used if the texture tint isn't supported (colour wash)
 local BUBBLY_FONT = Enum.Font.GothamBold   -- menu font (try Enum.Font.GothamBlack for even bolder)
-local MENU_OUTLINE = Color3.fromRGB(80, 60, 130)
-local BUTTON_OUTLINE = Color3.fromRGB(70, 70, 70)     -- thin outline so the Black button shows on the black menu
-local BUTTON_SELECTED = Color3.fromRGB(0, 170, 255)
+local MENU_OUTLINE = Color3.fromRGB(70, 74, 88)
+local BUTTON_OUTLINE = Color3.fromRGB(120, 125, 142)  -- glass rim around every button
+local BUTTON_SELECTED = Color3.fromRGB(0, 150, 235)
+
+-- TRAIL SETTINGS
+local TRAIL_LIFETIME = 0.8   -- how long the trail lingers (seconds)
+local TRAIL_WIDTH = 0.4      -- how thick the trail is at the tip (studs)
+local TRAIL_FLIP = false     -- if the trail comes off the wrong end of the gun, set this to true
+
 local COLORS = {
 	{ name = "Red",        color = Color3.fromRGB(255, 0, 0) },
 	{ name = "Green",      color = Color3.fromRGB(0, 255, 0) },
@@ -46,8 +52,44 @@ local GLASS = { name = "Glass", color = Color3.fromRGB(255, 255, 255), mode = "p
 -- OR paste a base64 string of the PNG into ICON_PNG_B64 (executors with writefile + getcustomasset only).
 -- If both are empty, a black-and-white orb drawn in code (matching the picture) is used.
 local MINI_ICON_ASSET = ""
-local ICON_SIZE = 52
+local ICON_SIZE = 112
+local ICON_URL = ""
 local ICON_PNG_B64 = [=[
+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
 ]=]
 
 local env = (getgenv and getgenv()) or _G
@@ -70,13 +112,16 @@ local rainbowT = setmetatable({}, { __mode = "k" })       -- part -> 0..1, where
 local glassed = setmetatable({}, { __mode = "k" })       -- parts currently showing our glass look
 local glassGuarded = setmetatable({}, { __mode = "k" })  -- parts we already watch for the game making them solid again
 local glassOverlay = false  -- the "See-through" switch: keep the glass look on any colour
+local trailOn = false       -- the "Trail" switch: coloured trail off the tip of the gun
+local trails = setmetatable({}, { __mode = "k" })        -- tool -> { trail, a0, a1 } (the trail we added)
 local unglassing = false
 local chromed = setmetatable({}, { __mode = "k" })       -- meshes currently showing the chrome look
 local flatSpread = setmetatable({}, { __mode = "k" })    -- parts of a gun that is a single piece (no end-to-end spread to colour)
 local sheens = setmetatable({}, { __mode = "k" })        -- gun part -> the two glow lights we added to it (only if GLASS_SHEEN is on)
 local lastSpin = 0
 local hipQueued = false
-local gui, gunLabel, hipLabel, statusLabel, noteLabel, glassToggleBtn
+local gui, gunLabel, hipLabel, statusLabel, noteLabel
+local glassToggleBtn, glassToggleBg, trailToggleBtn, trailToggleBg
 local buttons = {}
 local function connect(signal, fn)
 	local c = signal:Connect(fn)
@@ -643,6 +688,249 @@ local function watchTexture(mp)
 		if selected then tintMesh(mp, colorFor(mp)) end
 	end)
 end
+
+-- TRAIL: a coloured ribbon that streams off the tip of the gun while you move it
+local function withAxis(vec, axis, value)
+	return Vector3.new(axis == "X" and value or vec.X, axis == "Y" and value or vec.Y, axis == "Z" and value or vec.Z)
+end
+local function removeTrail(tool)
+	local made = trails[tool]
+	if made then
+		for _, o in pairs(made) do
+			pcall(function() o:Destroy() end)
+		end
+		trails[tool] = nil
+	end
+end
+local function trailColorSeq()
+	if selected == nil then return ColorSequence.new(Color3.new(1, 1, 1)) end
+	if selected.mode == "rainbow" or selected.rainbowFx then return RAINBOW_SEQUENCE end
+	if selected.mode == "pearl" then return ColorSequence.new(Color3.fromRGB(235, 240, 255)) end
+	return ColorSequence.new(selected.color)
+end
+local function trailLook(trail)
+	trail.Color = trailColorSeq()
+	-- glowing (additive) trails can't show black, so a black trail is drawn solid instead
+	local black = selected ~= nil and colorsClose(selected.color, Color3.new(0, 0, 0))
+	trail.LightEmission = black and 0 or 1
+	pcall(function() trail.Brightness = 4 end) -- extra glow so it pops (ignored if unsupported)
+end
+-- works out where the tip of the gun is: the far end of its longest side, the end that points away from you
+-- 1) if the gun has its own muzzle marker (an Attachment called Muzzle / Barrel / Tip / Flash...), use exactly that
+local MUZZLE_WORDS = { "muzzle", "barrel", "tip", "flash", "firepoint", "fireattach", "nozzle", "shoot" }
+local function findMuzzle(parts)
+	for _, word in ipairs(MUZZLE_WORDS) do
+		for _, p in ipairs(parts) do
+			for _, a in ipairs(p:GetChildren()) do
+				if a:IsA("Attachment") and a.Name ~= "VSTrail" and a.Name ~= "VSSheen"
+					and string.find(string.lower(a.Name), word, 1, true) then
+					return p, a.Position
+				end
+			end
+		end
+	end
+	-- 1b) an attachment that holds a muzzle flash / light / emitter is almost always the muzzle
+	for _, p in ipairs(parts) do
+		for _, a in ipairs(p:GetChildren()) do
+			if a:IsA("Attachment") and a.Name ~= "VSTrail" and a.Name ~= "VSSheen" then
+				for _, c in ipairs(a:GetChildren()) do
+					if c:IsA("ParticleEmitter") or c:IsA("Light") then
+						return p, a.Position
+					end
+				end
+			end
+		end
+	end
+	return nil
+end
+-- where your hand is (the gun's grip), so the tip can be "the end furthest from the hand"
+local function handPosition()
+	local char = LocalPlayer.Character
+	local hand = char and (char:FindFirstChild("RightHand") or char:FindFirstChild("Right Arm"))
+	return hand and hand.Position or nil
+end
+-- for the hip gun: the Handle part is the grip, as long as it isn't the whole gun body
+local function handleGrip(parts)
+	local handle, biggest
+	for _, p in ipairs(parts) do
+		if p.Name == "Handle" then handle = p end
+		if not biggest or p.Size.Magnitude > biggest.Size.Magnitude then biggest = p end
+	end
+	if handle and handle ~= biggest then return handle.Position end
+	return nil
+end
+local function findTip(allParts, gripPos)
+	local parts = {}
+	for _, p in ipairs(allParts) do
+		if p.Transparency < 1 then table.insert(parts, p) end
+	end
+	if #parts == 0 then parts = allParts end -- gun hidden by the game? still put the trail on it
+	if #parts == 0 then return nil end
+	local markerPart, markerPos = findMuzzle(allParts)
+	if markerPart then
+		return markerPart, markerPos, Vector3.new(TRAIL_WIDTH / 2, 0, 0), "the gun's muzzle point"
+	end
+	-- 2) otherwise: find the part that reaches furthest from the grip, and put the trail on the CENTRE of its far end
+	if gripPos then
+		local bestPart, bestDist = nil, -1
+		for _, p in ipairs(parts) do
+			local h = p.Size / 2
+			for sx = -1, 1, 2 do
+				for sy = -1, 1, 2 do
+					for sz = -1, 1, 2 do
+						local world = p.CFrame:PointToWorldSpace(Vector3.new(h.X * sx, h.Y * sy, h.Z * sz))
+						local d = (world - gripPos).Magnitude
+						if d > bestDist then
+							bestDist = d
+							bestPart = p
+						end
+					end
+				end
+			end
+		end
+		if bestPart then
+			local p = bestPart
+			local names = { "X", "Y", "Z" }
+			table.sort(names, function(a, b) return p.Size[a] > p.Size[b] end)
+			local axis, sideAxis = names[1], names[2]
+			local dir = p.CFrame:VectorToWorldSpace(withAxis(Vector3.zero, axis, 1))
+			local half = p.Size[axis] / 2
+			local sign = ((p.Position + dir * half - gripPos).Magnitude >= (p.Position - dir * half - gripPos).Magnitude) and 1 or -1
+			if TRAIL_FLIP then sign = -sign end
+			return p, withAxis(Vector3.zero, axis, sign * half), withAxis(Vector3.zero, sideAxis, TRAIL_WIDTH / 2), "end furthest from your hand"
+		end
+	end
+	-- 3) last resort: the far end of the gun's longest side
+	local ref = parts[1]
+	for _, p in ipairs(parts) do
+		if p.Size.Magnitude > ref.Size.Magnitude then ref = p end
+	end
+	local lo = Vector3.new(math.huge, math.huge, math.huge)
+	local hi = Vector3.new(-math.huge, -math.huge, -math.huge)
+	for _, p in ipairs(parts) do
+		local h = p.Size / 2
+		for sx = -1, 1, 2 do
+			for sy = -1, 1, 2 do
+				for sz = -1, 1, 2 do
+					local world = p.CFrame:PointToWorldSpace(Vector3.new(h.X * sx, h.Y * sy, h.Z * sz))
+					local v = ref.CFrame:PointToObjectSpace(world)
+					lo = Vector3.new(math.min(lo.X, v.X), math.min(lo.Y, v.Y), math.min(lo.Z, v.Z))
+					hi = Vector3.new(math.max(hi.X, v.X), math.max(hi.Y, v.Y), math.max(hi.Z, v.Z))
+				end
+			end
+		end
+	end
+	local ext = hi - lo
+	local names = { "X", "Y", "Z" }
+	table.sort(names, function(a, b) return ext[a] > ext[b] end)
+	local axis, sideAxis = names[1], names[2]
+	local char = LocalPlayer.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	local useHi = true
+	if root then
+		local dir = ref.CFrame:VectorToWorldSpace(withAxis(Vector3.zero, axis, 1))
+		useHi = dir:Dot(root.CFrame.LookVector) >= 0
+	end
+	if TRAIL_FLIP then useHi = not useHi end
+	local endVal = useHi and hi[axis] or lo[axis]
+	local len = ext[axis]
+	-- the tip sits on the barrel: average the position of the parts that reach the far end,
+	-- instead of the middle of the whole gun (which would be down by the grip)
+	local sumV, n = Vector3.zero, 0
+	for _, p in ipairs(parts) do
+		local h = p.Size / 2
+		local far = useHi and -math.huge or math.huge
+		for sx = -1, 1, 2 do
+			for sy = -1, 1, 2 do
+				for sz = -1, 1, 2 do
+					local world = p.CFrame:PointToWorldSpace(Vector3.new(h.X * sx, h.Y * sy, h.Z * sz))
+					local v = ref.CFrame:PointToObjectSpace(world)[axis]
+					far = useHi and math.max(far, v) or math.min(far, v)
+				end
+			end
+		end
+		if math.abs(far - endVal) <= len * 0.12 then
+			sumV = sumV + ref.CFrame:PointToObjectSpace(p.Position)
+			n += 1
+		end
+	end
+	local center = (lo + hi) / 2
+	if n > 0 then center = sumV / n end
+	local tip = withAxis(center, axis, endVal)
+	local side = withAxis(Vector3.zero, sideAxis, TRAIL_WIDTH / 2)
+	return ref, tip, side, "far end of the longest side (guess)"
+end
+-- LEARNED TIP: the first time you fire, the game's own shot starts at the muzzle. We remember exactly where
+-- that was on the gun, so the trail sits on the real muzzle from then on.
+local learnedTip = setmetatable({}, { __mode = "k" }) -- tool -> { part, pos }
+local function learnTip(beam)
+	local hand = handPosition()
+	local bestWorld, bestDist
+	for _, a in ipairs({ beam.Attachment0, beam.Attachment1 }) do
+		if a and a.Parent and a.Parent:IsA("BasePart") then
+			local w = a.WorldPosition
+			local dist = hand and (w - hand).Magnitude or 0
+			if not bestDist or dist < bestDist then
+				bestWorld, bestDist = w, dist
+			end
+		end
+	end
+	if not bestWorld or bestDist > 12 then return false end
+	for tool in pairs(hooked) do
+		if tool.Parent and tool.Parent == LocalPlayer.Character then
+			local nearest, nearestD
+			for _, p in ipairs(partsUnder(tool)) do
+				local d = (p.Position - bestWorld).Magnitude - p.Size.Magnitude / 2
+				if not nearestD or d < nearestD then nearest, nearestD = p, d end
+			end
+			if nearest and nearestD < 6 then
+				learnedTip[tool] = { part = nearest, pos = nearest.CFrame:PointToObjectSpace(bestWorld) }
+				removeTrail(tool)
+				return true
+			end
+		end
+	end
+	return false
+end
+local function buildTrail(tool, allParts, gripPos)
+	removeTrail(tool)
+	local ref, tip, side, how
+	local learned = learnedTip[tool]
+	if learned and learned.part and learned.part.Parent then
+		ref, tip, side, how = learned.part, learned.pos, Vector3.new(TRAIL_WIDTH / 2, 0, 0), "where your shot leaves the gun"
+	else
+		ref, tip, side, how = findTip(allParts, gripPos)
+	end
+	if not ref then return end
+	print("[Voidscope Recolor] trail tip = " .. how .. " (on part '" .. ref.Name .. "')")
+	local a0 = Instance.new("Attachment")
+	a0.Name = "VSTrail"
+	a0.Position = tip + side
+	a0.Parent = ref
+	local a1 = Instance.new("Attachment")
+	a1.Name = "VSTrail"
+	a1.Position = tip - side
+	a1.Parent = ref
+	local trail = Instance.new("Trail")
+	trail.Name = "VSTrail"
+	trail.Attachment0 = a0
+	trail.Attachment1 = a1
+	trail.Lifetime = TRAIL_LIFETIME
+	trail.MinLength = 0.02
+	trail.FaceCamera = true
+	trail.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	trail.WidthScale = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+	trail.Parent = ref
+	trailLook(trail)
+	trails[tool] = { trail = trail, a0 = a0, a1 = a1 }
+end
+
 local function glassWanted()
 	return glassOverlay or (selected ~= nil and (selected.mode == "glass" or selected.forceGlass == true))
 end
@@ -686,6 +974,7 @@ local function unglassAll()
 end
 local function restoreAll()
 	unglassAll()
+	for tool in pairs(trails) do removeTrail(tool) end
 	for part in pairs(sheens) do removeSheen(part) end
 	for mp in pairs(chromed) do chromed[mp] = nil end
 	for inst, saved in pairs(originals) do
@@ -724,6 +1013,7 @@ local function paint(inst, color, isShot)
 		end
 		return true
 	elseif isEffect(inst) then
+		if inst.Name == "VSTrail" then return false end -- our own trail is coloured by trailLook
 		if selected and (selected.mode == "rainbow" or selected.rainbowFx) then
 			set(inst, "Color", RAINBOW_SEQUENCE)
 		else
@@ -763,6 +1053,7 @@ local function paint(inst, color, isShot)
 end
 local function guardEffect(inst)
 	if not isEffect(inst) or guarded[inst] then return end
+	if inst.Name == "VSTrail" then return end
 	guarded[inst] = true
 	connect(inst:GetPropertyChangedSignal("Color"), function()
 		if not selected then return end
@@ -863,6 +1154,64 @@ local function paintHip()
 	if matchedRef and wantsSheen() then addSheen(matchedRef) end
 	return count
 end
+-- the gun on your hip / back (the game's display copy, or any part of you that uses the gun's mesh)
+local function hipGroups()
+	local groups = {}
+	local char = LocalPlayer.Character
+	if not char then return groups end
+	local target = hipTarget(char)
+	if target then groups["HIPTARGET"] = partsUnder(target) end
+	local ids = gunAssetIds()
+	local matched = {}
+	for _, d in ipairs(char:GetDescendants()) do
+		if d:IsA("MeshPart") and not d:FindFirstAncestorOfClass("Tool") and not (target and d:IsDescendantOf(target)) then
+			local okt, tex = pcall(function() return d.TextureID end)
+			local okm, mesh = pcall(function() return d.MeshId end)
+			if (okt and tex ~= "" and ids[tex]) or (okm and mesh ~= "" and ids[mesh]) then
+				table.insert(matched, d)
+			end
+		end
+	end
+	if #matched > 0 then groups["HIPMATCH"] = matched end
+	return groups
+end
+local function ensureTrail(key, getParts, gripFn)
+	local made = trails[key]
+	if made and made.trail and made.trail.Parent then
+		trailLook(made.trail)
+		return
+	end
+	local parts = getParts()
+	local ok, err = pcall(function()
+		buildTrail(key, parts, gripFn and gripFn(parts) or nil)
+	end)
+	if not ok then warn("[Voidscope Recolor] trail failed: " .. tostring(err)) end
+end
+-- trails go on the gun in your hand AND the one on your hip
+local function refreshTrails()
+	if not (trailOn and selected) then
+		for key in pairs(trails) do removeTrail(key) end
+		return
+	end
+	for tool in pairs(hooked) do
+		if tool.Parent and tool.Parent == LocalPlayer.Character then
+			ensureTrail(tool, function() return partsUnder(tool) end, handPosition)
+		else
+			removeTrail(tool)
+		end
+	end
+	for key, parts in pairs(hipGroups()) do
+		ensureTrail(key, function() return parts end, handleGrip)
+	end
+end
+local lastTrailCheck = 0
+connect(RunService.Heartbeat, function()
+	if not (trailOn and selected) then return end
+	local now = os.clock()
+	if now - lastTrailCheck < 1.5 then return end
+	lastTrailCheck = now
+	refreshTrails() -- keeps trails alive if the game swaps / re-creates the gun
+end)
 local function refreshHip()
 	if not selected then return end
 	local n = paintHip()
@@ -947,6 +1296,18 @@ local function hookGun(tool)
 		end)
 	end)
 	connect(tool.Activated, openShotWindow)
+	-- the trail is only on while the gun is in your hands
+	connect(tool.Equipped, function()
+		task.delay(0.3, function() -- give the game a moment to attach the gun to your hand
+			if trailOn and selected then refreshTrails() end
+		end)
+	end)
+	connect(tool.Unequipped, function()
+		removeTrail(tool)
+	end)
+	if trailOn and selected and tool.Parent == LocalPlayer.Character then
+		task.delay(0.3, refreshTrails)
+	end
 end
 local function scan(container)
 	if not container then return end
@@ -1024,6 +1385,14 @@ connect(Workspace.DescendantAdded, function(d)
 	task.defer(function()
 		if not d.Parent or not selected then return end
 		if not nearYou(d) then return end
+		if d:IsA("Beam") then
+			-- learn where the shot leaves the gun (tried straight away and again a moment later)
+			local function learn()
+				if learnTip(d) and trailOn then refreshTrails() end
+			end
+			learn()
+			task.delay(0.05, learn)
+		end
 		if paint(d, colorFor(d), true) then
 			guardEffect(d)
 			shotCount += 1
@@ -1032,18 +1401,27 @@ connect(Workspace.DescendantAdded, function(d)
 end)
 local function updateStatus()
 	if glassToggleBtn then
-		glassToggleBtn.Text = glassOverlay and "See-through: ON" or "See-through: OFF"
-		glassToggleBtn.BackgroundColor3 = glassOverlay and Color3.fromRGB(40, 100, 150) or Color3.fromRGB(35, 35, 50)
+		glassToggleBtn.Text = glassOverlay and "SEE-THROUGH: ON" or "SEE-THROUGH: OFF"
+	end
+	if glassToggleBg then
+		glassToggleBg.BackgroundColor3 = glassOverlay and Color3.fromRGB(0, 105, 190) or Color3.fromRGB(78, 80, 92)
+	end
+	if trailToggleBtn then
+		trailToggleBtn.Text = trailOn and "TRAIL: ON" or "TRAIL: OFF"
+	end
+	if trailToggleBg then
+		trailToggleBg.BackgroundColor3 = trailOn and Color3.fromRGB(0, 105, 190) or Color3.fromRGB(78, 80, 92)
 	end
 	if statusLabel then
 		statusLabel.Text = selected and ("Selected: " .. selected.name) or "Selected: Default"
 	end
-	for name, btn in pairs(buttons) do
-		local stroke = btn:FindFirstChildOfClass("UIStroke")
+	for name, bg in pairs(buttons) do
+		local stroke = bg:FindFirstChildOfClass("UIStroke")
 		if stroke then
 			local on = (selected ~= nil and selected.name == name)
 			stroke.Color = on and BUTTON_SELECTED or BUTTON_OUTLINE
-			stroke.Thickness = on and 2 or 1
+			stroke.Thickness = on and 2.5 or 1
+			stroke.Transparency = on and 0 or 0.45
 		end
 	end
 end
@@ -1067,11 +1445,13 @@ local function applyColor(entry)
 		if not (selected and selected.mode == "texture") then setNote("") end
 	end
 	refreshHip() -- the gun on your hip / back too
+	refreshTrails() -- the trail switches to the new colour
 	updateStatus()
 end
 local function resetColor()
 	selected = nil
 	glassOverlay = false
+	trailOn = false
 	restoreAll()
 	setNote("")
 	setHipStatus("Hip gun: pick a colour first")
@@ -1118,12 +1498,17 @@ local function b64decode(data)
 end
 local function loadIconImage()
 	if MINI_ICON_ASSET ~= "" then return MINI_ICON_ASSET end
-	if string.gsub(ICON_PNG_B64, "%s", "") == "" then return nil end
+	local hasB64 = string.gsub(ICON_PNG_B64, "%s", "") ~= ""
+	if not hasB64 and ICON_URL == "" then return nil end
 	local toAsset = getcustomasset or getsynasset
 	if not (writefile and toAsset) then return nil end
 	local ok, asset = pcall(function()
-		local name = "VoidscopeOrb.png"
-		writefile(name, b64decode(ICON_PNG_B64))
+		local name = "VestaIcon.png"
+		if hasB64 then
+			writefile(name, b64decode(ICON_PNG_B64))
+		else
+			writefile(name, game:HttpGet(ICON_URL))
+		end
 		return toAsset(name)
 	end)
 	if ok and type(asset) == "string" and asset ~= "" then
@@ -1143,86 +1528,145 @@ local function buildGui()
 		gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 	end
 
-	local WIDTH = 280
+	local WIDTH = 440 -- wide and short: a horizontal rectangle
 
-	-- the look from the photo: bold white capitals with a soft dark outline
+	-- bold white capitals with a soft dark outline (stays readable on the clear glass)
 	local function photoText(b, size)
 		b.Font = BUBBLY_FONT
 		b.TextSize = size or 15
 		b.TextColor3 = Color3.new(1, 1, 1)
 		b.TextStrokeColor3 = Color3.new(0, 0, 0)
-		b.TextStrokeTransparency = 0.45
+		b.TextStrokeTransparency = 0.3
+	end
+
+	-- shiny metal: bright and dark bands like polished chrome
+	local METAL_FRAME = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(12, 12, 15)),
+		ColorSequenceKeypoint.new(0.1, Color3.fromRGB(2, 2, 4)),
+		ColorSequenceKeypoint.new(0.24, Color3.fromRGB(2, 2, 3)),
+		ColorSequenceKeypoint.new(0.31, Color3.fromRGB(34, 36, 44)),
+		ColorSequenceKeypoint.new(0.37, Color3.fromRGB(6, 6, 9)),
+		ColorSequenceKeypoint.new(0.55, Color3.fromRGB(1, 1, 2)),
+		ColorSequenceKeypoint.new(0.67, Color3.fromRGB(26, 27, 34)),
+		ColorSequenceKeypoint.new(0.73, Color3.fromRGB(4, 4, 6)),
+		ColorSequenceKeypoint.new(0.88, Color3.fromRGB(2, 2, 3)),
+		ColorSequenceKeypoint.new(0.95, Color3.fromRGB(20, 21, 27)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(4, 4, 6)),
+	})
+	local METAL_BUTTON = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(175, 175, 182)),
+		ColorSequenceKeypoint.new(0.48, Color3.fromRGB(120, 120, 128)),
+		ColorSequenceKeypoint.new(0.52, Color3.fromRGB(75, 75, 84)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(135, 135, 144)),
+	})
+
+	-- one metallic button: a tinted see-through slab, a glossy highlight on the top half and a white rim.
+	-- (the text button sits on top so the shine never washes out the label)
+	local function makeGlassButton(parent, order, text, fillColor, fillGradient, onClick, transparency)
+		local holder = Instance.new("Frame")
+		holder.LayoutOrder = order
+		holder.BackgroundTransparency = 1
+		holder.Parent = parent
+
+		local bg = Instance.new("Frame")
+		bg.Name = "Glass"
+		bg.Size = UDim2.new(1, 0, 1, 0)
+		bg.BackgroundColor3 = fillGradient and Color3.new(1, 1, 1) or fillColor
+		bg.BackgroundTransparency = transparency or 0
+		bg.BorderSizePixel = 0
+		bg.ZIndex = 1
+		bg.Parent = holder
+		Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 9)
+		local g = Instance.new("UIGradient")
+		if fillGradient then
+			g.Color = fillGradient          -- rainbow buttons keep their rainbow
+		else
+			g.Color = METAL_BUTTON          -- everything else gets the chrome shading over its colour
+			g.Rotation = 90
+		end
+		g.Parent = bg
+		local stroke = Instance.new("UIStroke")
+		stroke.Color = BUTTON_OUTLINE
+		stroke.Thickness = 1
+		stroke.Transparency = 0.45
+		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		stroke.Parent = bg
+
+		local shine = Instance.new("Frame")
+		shine.Name = "Shine"
+		shine.Size = UDim2.new(1, -8, 0.45, 0)
+		shine.Position = UDim2.new(0, 4, 0, 2)
+		shine.BackgroundColor3 = Color3.new(1, 1, 1)
+		shine.BorderSizePixel = 0
+		shine.ZIndex = 2
+		shine.Parent = holder
+		Instance.new("UICorner", shine).CornerRadius = UDim.new(0, 7)
+		local shineGradient = Instance.new("UIGradient")
+		shineGradient.Rotation = 90
+		shineGradient.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.6),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		shineGradient.Parent = shine
+
+		local tb = Instance.new("TextButton")
+		tb.Size = UDim2.new(1, 0, 1, 0)
+		tb.BackgroundTransparency = 1
+		tb.BorderSizePixel = 0
+		tb.AutoButtonColor = false
+		tb.ZIndex = 3
+		photoText(tb, 13)
+		tb.TextScaled = true -- long labels shrink to fit the smaller buttons
+		local limit = Instance.new("UITextSizeConstraint")
+		limit.MaxTextSize = 13
+		limit.MinTextSize = 7
+		limit.Parent = tb
+		tb.Text = text
+		tb.Parent = holder
+		tb.MouseButton1Click:Connect(onClick)
+		return bg, tb, holder
 	end
 
 	local frame = Instance.new("Frame")
 	frame.Name = "Main"
-	frame.Size = UDim2.new(0, WIDTH, 0, 320) -- the height follows the content, see syncHeight below
+	frame.Size = UDim2.new(0, WIDTH, 0, 180) -- the height follows the content, see syncHeight below
 	frame.Position = UDim2.new(0, 20, 0.3, 0)
-	frame.BackgroundColor3 = Color3.new(1, 1, 1) -- the gradient below does the colouring
+	frame.BackgroundColor3 = Color3.new(1, 1, 1) -- the metal gradient below does the colouring
+	frame.BackgroundTransparency = 0
 	frame.BorderSizePixel = 0
 	frame.Active = true
 	pcall(function() frame.Draggable = true end)
 	frame.Parent = gui
-	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 14)
+	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 16)
 	local frameStroke = Instance.new("UIStroke")
 	frameStroke.Color = MENU_OUTLINE
 	frameStroke.Thickness = 1.5
+	frameStroke.Transparency = 0.5
 	frameStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	frameStroke.Parent = frame
-
-	-- black galaxy background
-	local galaxyOk, galaxyErr = pcall(function()
-		local sky = Instance.new("UIGradient")
-		sky.Rotation = 60
-		sky.Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0.00, Color3.fromRGB(0, 0, 0)),
-			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(22, 5, 44)),
-			ColorSequenceKeypoint.new(0.70, Color3.fromRGB(6, 12, 44)),
-			ColorSequenceKeypoint.new(1.00, Color3.fromRGB(0, 0, 0)),
-		})
-		sky.Parent = frame
-
-		local stars = Instance.new("Frame")
-		stars.Name = "Stars"
-		stars.Size = UDim2.new(1, 0, 1, 0)
-		stars.BackgroundTransparency = 1
-		stars.ClipsDescendants = true
-		stars.ZIndex = 1
-		stars.Parent = frame
-		Instance.new("UICorner", stars).CornerRadius = UDim.new(0, 14)
-
-		local rng = Random.new(1234)
-		for i = 1, 60 do
-			local size = 1
-			local roll = rng:NextNumber()
-			if roll < 0.15 then
-				size = 3
-			elseif roll < 0.5 then
-				size = 2
-			end
-			local star = Instance.new("Frame")
-			star.Size = UDim2.new(0, size, 0, size)
-			star.Position = UDim2.new(rng:NextNumber(0.03, 0.97), 0, rng:NextNumber(0.02, 0.98), 0)
-			star.BorderSizePixel = 0
-			if i % 5 == 0 then
-				star.BackgroundColor3 = Color3.fromRGB(190, 170, 255)
-			elseif i % 7 == 0 then
-				star.BackgroundColor3 = Color3.fromRGB(170, 215, 255)
-			else
-				star.BackgroundColor3 = Color3.new(1, 1, 1)
-			end
-			star.BackgroundTransparency = rng:NextNumber(0.05, 0.65)
-			star.ZIndex = 1
-			star.Parent = stars
-			if size > 1 then
-				Instance.new("UICorner", star).CornerRadius = UDim.new(1, 0)
-			end
-		end
-	end)
-	if not galaxyOk then
-		warn("[Voidscope Recolor] galaxy background skipped: " .. tostring(galaxyErr))
-		frame.BackgroundColor3 = Color3.fromRGB(4, 2, 12)
-	end
+	-- a soft diagonal sheen across the glass (brighter at the corners, clearest in the middle)
+	local glassSheen = Instance.new("UIGradient")
+	glassSheen.Rotation = 20
+	glassSheen.Color = METAL_FRAME
+	glassSheen.Parent = frame
+	-- glossy reflection across the top half, like light on polished black chrome
+	local gloss = Instance.new("Frame")
+	gloss.Name = "Gloss"
+	gloss.Size = UDim2.new(1, -6, 0.5, 0)
+	gloss.Position = UDim2.new(0, 3, 0, 3)
+	gloss.BackgroundColor3 = Color3.new(1, 1, 1)
+	gloss.BorderSizePixel = 0
+	gloss.ZIndex = 1
+	gloss.Parent = frame
+	Instance.new("UICorner", gloss).CornerRadius = UDim.new(0, 14)
+	local glossGradient = Instance.new("UIGradient")
+	glossGradient.Rotation = 90
+	glossGradient.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.93),
+		NumberSequenceKeypoint.new(0.6, 0.98),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	glossGradient.Parent = gloss
 
 	local content = Instance.new("Frame")
 	content.Name = "Content"
@@ -1234,10 +1678,10 @@ local function buildGui()
 	local pad = Instance.new("UIPadding", content)
 	pad.PaddingTop = UDim.new(0, 10)
 	pad.PaddingBottom = UDim.new(0, 10)
-	pad.PaddingLeft = UDim.new(0, 8)
-	pad.PaddingRight = UDim.new(0, 8)
+	pad.PaddingLeft = UDim.new(0, 10)
+	pad.PaddingRight = UDim.new(0, 10)
 	local list = Instance.new("UIListLayout", content)
-	list.Padding = UDim.new(0, 5)
+	list.Padding = UDim.new(0, 6)
 	list.SortOrder = Enum.SortOrder.LayoutOrder
 
 	local function syncHeight()
@@ -1267,7 +1711,7 @@ local function buildGui()
 	title.Text = "VESTA RECOLOR"
 	title.TextColor3 = Color3.new(1, 1, 1)
 	title.TextStrokeColor3 = Color3.new(0, 0, 0)
-	title.TextStrokeTransparency = 0.45
+	title.TextStrokeTransparency = 0.3
 	title.TextScaled = true
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.Parent = header
@@ -1281,158 +1725,69 @@ local function buildGui()
 		b.Position = UDim2.new(1, xOffset, 0.5, 0)
 		b.Size = UDim2.new(0, 28, 0, 28)
 		b.BackgroundColor3 = bg
+		b.BackgroundTransparency = 0.3
 		b.BorderSizePixel = 0
 		photoText(b, 18)
 		b.Text = text
 		b.Parent = header
 		Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
+		local s = Instance.new("UIStroke")
+		s.Color = BUTTON_OUTLINE
+		s.Transparency = 0.5
+		s.Thickness = 1
+		s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		s.Parent = b
 		return b
 	end
-	local minBtn = headerButton("-", -34, Color3.fromRGB(40, 40, 60))
-	local closeBtn = headerButton("X", 0, Color3.fromRGB(170, 40, 40))
+	local minBtn = headerButton("-", -34, Color3.fromRGB(38, 40, 54))
+	local closeBtn = headerButton("X", 0, Color3.fromRGB(125, 30, 30))
 
-	-- colour buttons (one per line, scrolls)
-	local grid = Instance.new("ScrollingFrame") -- one colour per line, scrolls like the photo
+	-- colour buttons: six per row, two rows (10 colours + Glass + Chroma)
+	local grid = Instance.new("Frame")
 	grid.Name = "Colours"
 	grid.LayoutOrder = nextOrder()
-	grid.Size = UDim2.new(1, 0, 0, 250)
+	grid.Size = UDim2.new(1, 0, 0, 62)
 	grid.BackgroundTransparency = 1
-	grid.BorderSizePixel = 0
-	grid.CanvasSize = UDim2.new(0, 0, 0, 0)
-	grid.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	grid.ScrollingDirection = Enum.ScrollingDirection.Y
-	grid.ScrollBarThickness = 4
-	grid.ScrollBarImageColor3 = Color3.fromRGB(200, 190, 255)
 	grid.Parent = content
 	local gridLayout = Instance.new("UIGridLayout")
-	gridLayout.CellSize = UDim2.new(1, -10, 0, 30)
-	gridLayout.CellPadding = UDim2.new(0, 0, 0, 6)
+	gridLayout.CellSize = UDim2.new(1 / 6, -5, 0, 28)
+	gridLayout.CellPadding = UDim2.new(0, 6, 0, 6)
 	gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	gridLayout.Parent = grid
 
 	for i, entry in ipairs(COLORS) do
-		local btn = Instance.new("TextButton")
-		btn.LayoutOrder = i
-		btn.BackgroundColor3 = entry.color
-		btn.BorderSizePixel = 0
-		btn.AutoButtonColor = true
-		photoText(btn, 14)
-		btn.Text = string.upper(entry.name)
-		if entry.gradient then
-			local holder = Instance.new("Frame")
-			holder.LayoutOrder = i
-			holder.BackgroundTransparency = 1
-			holder.Parent = grid
-			local fill = Instance.new("Frame")
-			fill.Size = UDim2.new(1, 0, 1, 0)
-			fill.BackgroundColor3 = Color3.new(1, 1, 1)
-			fill.BorderSizePixel = 0
-			fill.ZIndex = 1
-			fill.Parent = holder
-			Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 8)
-			local fillGradient = Instance.new("UIGradient")
-			fillGradient.Color = RAINBOW_SEQUENCE
-			fillGradient.Parent = fill
-			btn.LayoutOrder = 1
-			btn.Size = UDim2.new(1, 0, 1, 0)
-			btn.BackgroundTransparency = 1
-			btn.ZIndex = 2
-			btn.Parent = holder
-		else
-			btn.Parent = grid
-		end
-		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
-		local stroke = Instance.new("UIStroke")
-		stroke.Color = BUTTON_OUTLINE
-		stroke.Thickness = 1
-		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		stroke.Parent = btn
-		btn.MouseButton1Click:Connect(function()
-			applyColor(entry)
-		end)
-		buttons[entry.name] = btn
+		-- a pure black button would swallow the chrome shading, so it's drawn as dark gunmetal
+		local shown = colorsClose(entry.color, Color3.new(0, 0, 0)) and Color3.fromRGB(40, 40, 46) or entry.color
+		local bg = makeGlassButton(grid, i, string.upper(entry.name), shown,
+			entry.gradient and RAINBOW_SEQUENCE or nil, function() applyColor(entry) end)
+		buttons[entry.name] = bg
 	end
+	-- Glass: frosted light-blue
+	buttons[GLASS.name] = (makeGlassButton(grid, #COLORS + 1, string.upper(GLASS.name),
+		Color3.fromRGB(100, 140, 170), nil, function() applyColor(GLASS) end, 0.15))
+	-- Chroma: the live rainbow
+	buttons[RAINBOW.name] = (makeGlassButton(grid, #COLORS + 2, string.upper(RAINBOW.name),
+		Color3.new(1, 1, 1), RAINBOW_SEQUENCE, function() applyColor(RAINBOW) end))
 
-	-- Chroma (full-width rainbow bar)
-	local specialRow = Instance.new("Frame")
-	specialRow.Name = "SpecialRow"
-	specialRow.LayoutOrder = nextOrder()
-	specialRow.Size = UDim2.new(1, 0, 0, 30)
-	specialRow.BackgroundTransparency = 1
-	specialRow.Parent = content
-	local specialLayout = Instance.new("UIListLayout")
-	specialLayout.FillDirection = Enum.FillDirection.Horizontal
-	specialLayout.Padding = UDim.new(0, 6)
-	specialLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	specialLayout.Parent = specialRow
+	-- controls row: See-through / Trail / Reset
+	local controls = Instance.new("Frame")
+	controls.Name = "Controls"
+	controls.LayoutOrder = nextOrder()
+	controls.Size = UDim2.new(1, 0, 0, 28)
+	controls.BackgroundTransparency = 1
+	controls.Parent = content
+	local controlsLayout = Instance.new("UIListLayout")
+	controlsLayout.FillDirection = Enum.FillDirection.Horizontal
+	controlsLayout.Padding = UDim.new(0, 6)
+	controlsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	controlsLayout.Parent = controls
 
-	local rainbowHolder = Instance.new("Frame")
-	rainbowHolder.Name = "RainbowHolder"
-	rainbowHolder.LayoutOrder = 1
-	rainbowHolder.Size = UDim2.new(1, 0, 1, 0)
-	rainbowHolder.BackgroundTransparency = 1
-	rainbowHolder.Parent = specialRow
-
-	local rainbowFill = Instance.new("Frame")
-	rainbowFill.Size = UDim2.new(1, 0, 1, 0)
-	rainbowFill.BackgroundColor3 = Color3.new(1, 1, 1)
-	rainbowFill.BorderSizePixel = 0
-	rainbowFill.ZIndex = 1
-	rainbowFill.Parent = rainbowHolder
-	Instance.new("UICorner", rainbowFill).CornerRadius = UDim.new(0, 8)
-	local rainbowGradient = Instance.new("UIGradient")
-	rainbowGradient.Color = RAINBOW_SEQUENCE
-	rainbowGradient.Parent = rainbowFill
-
-	local rainbowBtn = Instance.new("TextButton")
-	rainbowBtn.Size = UDim2.new(1, 0, 1, 0)
-	rainbowBtn.BackgroundTransparency = 1
-	rainbowBtn.BorderSizePixel = 0
-	photoText(rainbowBtn, 15)
-	rainbowBtn.Text = string.upper(RAINBOW.name)
-	rainbowBtn.ZIndex = 2
-	rainbowBtn.Parent = rainbowHolder
-	Instance.new("UICorner", rainbowBtn).CornerRadius = UDim.new(0, 8)
-	local rainbowStroke = Instance.new("UIStroke")
-	rainbowStroke.Color = BUTTON_OUTLINE
-	rainbowStroke.Thickness = 1
-	rainbowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	rainbowStroke.Parent = rainbowBtn
-	rainbowBtn.MouseButton1Click:Connect(function()
-		applyColor(RAINBOW)
-	end)
-	buttons[RAINBOW.name] = rainbowBtn
-
-	-- Glass: frosted light-blue like the buttons in the photo
-	local glassBtn = Instance.new("TextButton")
-	glassBtn.LayoutOrder = #COLORS + 1
-	glassBtn.BackgroundColor3 = Color3.fromRGB(170, 220, 255)
-	glassBtn.BackgroundTransparency = 0.45
-	glassBtn.BorderSizePixel = 0
-	photoText(glassBtn, 14)
-	glassBtn.Text = string.upper(GLASS.name)
-	glassBtn.Parent = grid
-	Instance.new("UICorner", glassBtn).CornerRadius = UDim.new(0, 8)
-	local glassStroke = Instance.new("UIStroke")
-	glassStroke.Color = BUTTON_OUTLINE
-	glassStroke.Thickness = 1
-	glassStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	glassStroke.Parent = glassBtn
-	glassBtn.MouseButton1Click:Connect(function()
-		applyColor(GLASS)
-	end)
-	buttons[GLASS.name] = glassBtn
-
-	glassToggleBtn = Instance.new("TextButton")
-	glassToggleBtn.LayoutOrder = nextOrder()
-	glassToggleBtn.Size = UDim2.new(1, 0, 0, 30)
-	glassToggleBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
-	glassToggleBtn.BorderSizePixel = 0
-	photoText(glassToggleBtn, 14)
-	glassToggleBtn.Text = "See-through: OFF"
-	glassToggleBtn.Parent = content
-	Instance.new("UICorner", glassToggleBtn).CornerRadius = UDim.new(0, 8)
-	glassToggleBtn.MouseButton1Click:Connect(function()
+	local function controlButton(order2, text, fill, onClick)
+		local bg, tb, holder = makeGlassButton(controls, order2, text, fill, nil, onClick)
+		holder.Size = UDim2.new(1 / 3, -4, 1, 0)
+		return bg, tb
+	end
+	glassToggleBg, glassToggleBtn = controlButton(1, "SEE-THROUGH: OFF", Color3.fromRGB(78, 80, 92), function()
 		glassOverlay = not glassOverlay
 		if selected then
 			applyColor(selected) -- repaints with / without the see-through look
@@ -1440,53 +1795,77 @@ local function buildGui()
 			updateStatus()
 		end
 	end)
+	trailToggleBg, trailToggleBtn = controlButton(2, "TRAIL: OFF", Color3.fromRGB(78, 80, 92), function()
+		trailOn = not trailOn
+		if trailOn and not selected then
+			setNote("Pick a colour first, the trail follows it.")
+		elseif trailOn then
+			setNote("")
+		end
+		refreshTrails()
+		updateStatus()
+	end)
+	controlButton(3, "RESET TO DEFAULT", Color3.fromRGB(84, 84, 100), resetColor)
 
-	local reset = Instance.new("TextButton")
-	reset.LayoutOrder = nextOrder()
-	reset.Size = UDim2.new(1, 0, 0, 30)
-	reset.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
-	reset.BorderSizePixel = 0
-	photoText(reset, 14)
-	reset.Text = "RESET TO DEFAULT"
-	reset.Parent = content
-	Instance.new("UICorner", reset).CornerRadius = UDim.new(0, 8)
-	reset.MouseButton1Click:Connect(resetColor)
-
-	noteLabel = label(content, nextOrder(), "", 11, Color3.fromRGB(200, 190, 255), 28)
+	noteLabel = label(content, nextOrder(), "", 11, Color3.fromRGB(150, 150, 170), 14)
 	noteLabel.TextXAlignment = Enum.TextXAlignment.Left
-	label(content, nextOrder(), "RightShift = hide / show", 11, Color3.fromRGB(130, 130, 150), 14)
+	noteLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+	noteLabel.TextStrokeTransparency = 0.5
 
-	-- footer
-	local handle = label(content, nextOrder(), "insp:kudo", 15, Color3.new(1, 1, 1), 22)
+	-- footer: hint on the left, handle on the right
+	local footer = Instance.new("Frame")
+	footer.LayoutOrder = nextOrder()
+	footer.Size = UDim2.new(1, 0, 0, 18)
+	footer.BackgroundTransparency = 1
+	footer.Parent = content
+	local hint = Instance.new("TextLabel")
+	hint.Size = UDim2.new(0.6, 0, 1, 0)
+	hint.BackgroundTransparency = 1
+	hint.Font = Enum.Font.Gotham
+	hint.TextSize = 11
+	hint.TextColor3 = Color3.fromRGB(150, 152, 168)
+	hint.TextStrokeColor3 = Color3.new(0, 0, 0)
+	hint.TextStrokeTransparency = 0.5
+	hint.TextXAlignment = Enum.TextXAlignment.Left
+	hint.Text = "RightShift = hide / show"
+	hint.Parent = footer
+	local handle = Instance.new("TextLabel")
+	handle.Size = UDim2.new(0.4, 0, 1, 0)
+	handle.Position = UDim2.new(0.6, 0, 0, 0)
+	handle.BackgroundTransparency = 1
 	handle.Font = BUBBLY_FONT
-	handle.TextWrapped = false
+	handle.TextSize = 15
+	handle.TextColor3 = Color3.new(1, 1, 1)
 	handle.TextStrokeColor3 = Color3.new(0, 0, 0)
-	handle.TextStrokeTransparency = 0.45
+	handle.TextStrokeTransparency = 0.3
+	handle.TextXAlignment = Enum.TextXAlignment.Right
+	handle.Text = "insp:kudo"
+	handle.Parent = footer
 
 	-- "Are you sure?" popup for the close button
 	local confirm = Instance.new("Frame")
 	confirm.Name = "ConfirmClose"
 	confirm.Size = UDim2.new(1, 0, 1, 0)
-	confirm.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-	confirm.BackgroundTransparency = 0.15
+	confirm.BackgroundColor3 = Color3.fromRGB(2, 2, 5)
+	confirm.BackgroundTransparency = 0.3
 	confirm.BorderSizePixel = 0
 	confirm.Active = true -- stops clicks going through to the buttons underneath
 	confirm.Visible = false
 	confirm.ZIndex = 20
 	confirm.Parent = frame
-	Instance.new("UICorner", confirm).CornerRadius = UDim.new(0, 14)
+	Instance.new("UICorner", confirm).CornerRadius = UDim.new(0, 16)
 
 	local confirmText = Instance.new("TextLabel")
 	confirmText.AnchorPoint = Vector2.new(0.5, 0.5)
-	confirmText.Position = UDim2.new(0.5, 0, 0.38, 0)
+	confirmText.Position = UDim2.new(0.5, 0, 0.35, 0)
 	confirmText.Size = UDim2.new(1, -24, 0, 50)
 	confirmText.BackgroundTransparency = 1
 	confirmText.Font = BUBBLY_FONT
-	confirmText.TextSize = 18
+	confirmText.TextSize = 20
 	confirmText.TextWrapped = true
 	confirmText.TextColor3 = Color3.new(1, 1, 1)
 	confirmText.TextStrokeColor3 = Color3.new(0, 0, 0)
-	confirmText.TextStrokeTransparency = 0.45
+	confirmText.TextStrokeTransparency = 0.3
 	confirmText.Text = "ARE YOU SURE?"
 	confirmText.ZIndex = 21
 	confirmText.Parent = confirm
@@ -1495,18 +1874,25 @@ local function buildGui()
 		local b = Instance.new("TextButton")
 		b.AnchorPoint = Vector2.new(0.5, 0.5)
 		b.Position = UDim2.new(xScale, 0, 0.7, 0)
-		b.Size = UDim2.new(0.4, 0, 0, 32)
+		b.Size = UDim2.new(0.25, 0, 0, 34)
 		b.BackgroundColor3 = bg
+		b.BackgroundTransparency = 0.25
 		b.BorderSizePixel = 0
 		photoText(b, 15)
 		b.Text = text
 		b.ZIndex = 21
 		b.Parent = confirm
-		Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
+		Instance.new("UICorner", b).CornerRadius = UDim.new(0, 9)
+		local s = Instance.new("UIStroke")
+		s.Color = BUTTON_OUTLINE
+		s.Transparency = 0.45
+		s.Thickness = 1
+		s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		s.Parent = b
 		return b
 	end
-	local yesBtn = confirmButton("YES", 0.28, Color3.fromRGB(170, 40, 40))
-	local noBtn = confirmButton("NO", 0.72, Color3.fromRGB(45, 45, 70))
+	local yesBtn = confirmButton("YES", 0.35, Color3.fromRGB(125, 30, 30))
+	local noBtn = confirmButton("NO", 0.65, Color3.fromRGB(38, 40, 54))
 
 	-- minimise
 	local minimised = false
@@ -1515,62 +1901,22 @@ local function buildGui()
 	if imageId then
 		icon = Instance.new("ImageButton")
 		icon.Image = imageId
-		icon.ScaleType = Enum.ScaleType.Fit
+		icon.ScaleType = Enum.ScaleType.Stretch
 		icon.BackgroundColor3 = Color3.new(0, 0, 0)
 		icon.AutoButtonColor = false
 	else
-		-- drawn-in-code version of the orb picture: black square, white sphere, white ring
 		icon = Instance.new("TextButton")
-		icon.Text = ""
 		icon.AutoButtonColor = false
-		icon.BackgroundColor3 = Color3.fromRGB(8, 8, 10)
-
-		local planet = Instance.new("Frame")
-		planet.AnchorPoint = Vector2.new(0.5, 0.5)
-		planet.Position = UDim2.new(0.5, 0, 0.5, 0)
-		planet.Size = UDim2.new(0, 28, 0, 28)
-		planet.BorderSizePixel = 0
-		planet.BackgroundColor3 = Color3.new(1, 1, 1)
-		planet.Parent = icon
-		Instance.new("UICorner", planet).CornerRadius = UDim.new(1, 0)
-		local planetGradient = Instance.new("UIGradient")
-		planetGradient.Rotation = 45
-		planetGradient.Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
-			ColorSequenceKeypoint.new(0.55, Color3.fromRGB(40, 40, 46)),
-			ColorSequenceKeypoint.new(1, Color3.fromRGB(235, 235, 240)),
-		})
-		planetGradient.Parent = planet
-
-		local ring = Instance.new("Frame")
-		ring.AnchorPoint = Vector2.new(0.5, 0.5)
-		ring.Position = UDim2.new(0.5, 0, 0.5, 0)
-		ring.Size = UDim2.new(0, 46, 0, 14)
-		ring.Rotation = -20
-		ring.BackgroundTransparency = 1
-		ring.BorderSizePixel = 0
-		ring.Parent = icon
-		Instance.new("UICorner", ring).CornerRadius = UDim.new(1, 0)
-		local ringStroke = Instance.new("UIStroke")
-		ringStroke.Color = Color3.new(1, 1, 1)
-		ringStroke.Thickness = 3
-		ringStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		ringStroke.Parent = ring
-
-		-- tiny stars on the black sphere area and around it
-		local specks = { { 0.15, 0.2 }, { 0.82, 0.18 }, { 0.2, 0.8 }, { 0.85, 0.78 }, { 0.5, 0.08 }, { 0.45, 0.5 }, { 0.58, 0.42 } }
-		for _, p in ipairs(specks) do
-			local dot = Instance.new("Frame")
-			dot.Size = UDim2.new(0, 2, 0, 2)
-			dot.Position = UDim2.new(p[1], 0, p[2], 0)
-			dot.BorderSizePixel = 0
-			dot.BackgroundColor3 = Color3.new(1, 1, 1)
-			dot.ZIndex = 3
-			dot.Parent = icon
-		end
+		icon.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		icon.Font = BUBBLY_FONT
+		icon.Text = "vesta"
+		icon.TextSize = 22
+		icon.TextColor3 = Color3.fromRGB(215, 218, 228)
+		icon.TextStrokeColor3 = Color3.fromRGB(90, 94, 110)
+		icon.TextStrokeTransparency = 0.4
 	end
 	icon.Name = "MiniIcon"
-	icon.Size = UDim2.new(0, ICON_SIZE, 0, ICON_SIZE)
+	icon.Size = UDim2.new(0, ICON_SIZE, 0, math.floor(ICON_SIZE * 0.295))
 	icon.Position = frame.Position
 	icon.BorderSizePixel = 0
 	icon.Active = true
