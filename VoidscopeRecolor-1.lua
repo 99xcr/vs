@@ -124,7 +124,7 @@ local gui, gunLabel, hipLabel, statusLabel, noteLabel
 local glassToggleBtn, glassToggleBg, trailToggleBtn, trailToggleBg
 local buttons = {}
 
--- ===== EXTRAS: knives / bombs, custom + saved colours, finishes, shot fx =====
+-- ===== EXTRAS: knives / bombs, custom colour, finishes, shot fx =====
 local VS = {}
 -- Which tools get recoloured. Tool names are matched with spaces / symbols removed and lower-cased, so
 -- "Gold Bomb", "GoldBomb" and "gold_bomb" are the same thing. The first entry that matches wins.
@@ -154,39 +154,19 @@ VS.FINISHES = {
 }
 VS.finishIdx = 1
 VS.finished = setmetatable({}, { __mode = "k" }) -- parts currently showing a finish
--- Custom colour + saved slots (saved to a file if your executor supports writefile)
-VS.SAVED_SLOTS = 6
-VS.SAVE_FILE = "VestaSavedColors.json"
-VS.saved = {}
-for i = 1, VS.SAVED_SLOTS do VS.saved[i] = false end
+-- Custom colour picker state
 VS.custom = { h = 0.58, s = 0.9, v = 1 }
+VS.override = {}  -- kind -> colour chosen on that item's own page (nil = it follows the ALL page)
+VS.tab = "all"    -- which page of the menu is open: "all" or an item kind
+VS.curKind = nil  -- the item being painted right now
+VS.hipKind = setmetatable({}, { __mode = "k" }) -- copies on your hip / back -> the item they belong to
+VS.ui = { allOnly = {}, itemOnly = {}, advanced = {} }
+VS.moreOpen = false -- the MORE OPTIONS section
+VS.tabBtn, VS.tabTb = {}, {}
+VS.ON, VS.OFF = Color3.fromRGB(0, 105, 190), Color3.fromRGB(78, 80, 92)
+VS.GREEN, VS.RED = Color3.fromRGB(45, 165, 80), Color3.fromRGB(175, 55, 55)
+VS.toggleBtn = {}
 
-function VS.loadSaved()
-	if not (isfile and readfile) then return end
-	local ok, data = pcall(function()
-		if not isfile(VS.SAVE_FILE) then return nil end
-		return game:GetService("HttpService"):JSONDecode(readfile(VS.SAVE_FILE))
-	end)
-	if ok and type(data) == "table" then
-		for i = 1, VS.SAVED_SLOTS do
-			local c = data[i]
-			if type(c) == "table" and type(c[1]) == "number" and type(c[2]) == "number" and type(c[3]) == "number" then
-				VS.saved[i] = {
-					math.clamp(math.floor(c[1]), 0, 255),
-					math.clamp(math.floor(c[2]), 0, 255),
-					math.clamp(math.floor(c[3]), 0, 255),
-				}
-			end
-		end
-	end
-end
-function VS.writeSaved()
-	if not writefile then return end
-	pcall(function()
-		writefile(VS.SAVE_FILE, game:GetService("HttpService"):JSONEncode(VS.saved))
-	end)
-end
-VS.loadSaved()
 
 function VS.parseColor(text)
 	text = string.gsub(text or "", "%s", "")
@@ -226,6 +206,8 @@ function VS.kindOfTool(inst)
 end
 -- which hooked item (if any) an instance belongs to
 function VS.kindOfInst(inst)
+	local hk = VS.hipKind[inst]
+	if hk then return hk end
 	local p = inst
 	while p do
 		local k = hooked[p]
@@ -244,6 +226,39 @@ function VS.soundWord(n)
 		if string.find(n, w, 1, true) then return true end
 	end
 	return false
+end
+-- the colour an item uses: its own (if you picked one on its page) or the ALL one
+function VS.sel(kind)
+	return VS.override[kind] or selected
+end
+function VS.anyActive()
+	return selected ~= nil or next(VS.override) ~= nil
+end
+function VS.anyRainbow()
+	if selected and selected.mode == "rainbow" then return true end
+	for _, o in pairs(VS.override) do
+		if o.mode == "rainbow" then return true end
+	end
+	return false
+end
+function VS.currentEntry()
+	if VS.tab == "all" then return selected end
+	return VS.override[VS.tab]
+end
+-- runs fn with `selected` swapped to that item's own colour (if it has one), then puts it back
+function VS.run(kind, fn, ...)
+	local prevSel, prevKind = selected, VS.curKind
+	local own = VS.override[kind]
+	if own then selected = own end
+	VS.curKind = kind
+	local ok, a, b = pcall(fn, ...)
+	selected = prevSel
+	VS.curKind = prevKind
+	if not ok then
+		warn("[Voidscope Recolor] " .. tostring(a))
+		return nil
+	end
+	return a, b
 end
 function VS.finishWanted()
 	local f = VS.FINISHES[VS.finishIdx]
@@ -346,14 +361,18 @@ local function colorFor(inst)
 	return selected and selected.color or Color3.new(1, 1, 1)
 end
 connect(RunService.Heartbeat, function()
-	if RAINBOW_SPIN == 0 or not (selected and selected.mode == "rainbow") then return end
+	if RAINBOW_SPIN == 0 or not VS.anyRainbow() then return end
 	local now = os.clock()
 	if now - lastSpin < 0.08 then return end
 	lastSpin = now
 	for mp in pairs(rainbowT) do
 		local sa = surfaces[mp]
 		if sa and sa.Parent then
-			sa.Color = colorFor(mp)
+			local kind = VS.kindOfInst(mp) or "gun"
+			local own = VS.sel(kind)
+			if own and own.mode == "rainbow" then
+				VS.run(kind, function() sa.Color = colorFor(mp) end)
+			end
 		end
 	end
 end)
@@ -735,10 +754,12 @@ local function runJobs()
 			if next(waiting) then
 				setNote(image and "" or ("Texture edit failed: " .. tostring(why)))
 			end
-			for w in pairs(waiting) do
-				if selected and selected.mode == "texture" and w.Parent and VS.kindEnabled(w) then
-					pcall(tintMesh, w, colorFor(w))
-				end
+			for w, wk in pairs(waiting) do
+				VS.run(type(wk) == "string" and wk or "gun", function()
+					if selected and selected.mode == "texture" and w.Parent and VS.kindEnabled(w) then
+						pcall(tintMesh, w, colorFor(w))
+					end
+				end)
 			end
 		end
 		working = false
@@ -783,7 +804,7 @@ function tintMesh(mp, color)
 			removeOverlay(mp)
 		end
 		if entry and entry.state == "working" then
-			entry.waiters[mp] = true
+			entry.waiters[mp] = VS.curKind or "gun"
 			setNote("Building the " .. style .. " texture...")
 		end
 		return
@@ -812,7 +833,9 @@ local function watchTexture(mp)
 	if texWatched[mp] then return end
 	texWatched[mp] = true
 	connect(mp:GetPropertyChangedSignal("TextureID"), function()
-		if selected and VS.kindEnabled(mp) then tintMesh(mp, colorFor(mp)) end
+		VS.run(VS.kindOfInst(mp) or "gun", function()
+			if selected and VS.kindEnabled(mp) then tintMesh(mp, colorFor(mp)) end
+		end)
 	end)
 end
 
@@ -1069,10 +1092,13 @@ end
 local function applyGlass(inst)
 	if not glassGuarded[inst] then
 		glassGuarded[inst] = true
+		local gk = VS.kindOfInst(inst) or VS.curKind or "gun"
 		connect(inst:GetPropertyChangedSignal("Transparency"), function()
-			if not unglassing and glassWanted() and VS.kindEnabled(inst) and inst.Transparency < GLASS_TRANSPARENCY - 0.01 then
-				glassify(inst)
-			end
+			VS.run(VS.kindOfInst(inst) or gk, function()
+				if not unglassing and glassWanted() and VS.kindEnabled(inst) and inst.Transparency < GLASS_TRANSPARENCY - 0.01 then
+					glassify(inst)
+				end
+			end)
 		end)
 	end
 	if inst.Transparency < GLASS_TRANSPARENCY - 0.01 then
@@ -1266,7 +1292,9 @@ local function guardEffect(inst)
 	if not isEffect(inst) or guarded[inst] then return end
 	if inst.Name == "VSTrail" then return end
 	guarded[inst] = true
+	local gk = VS.kindOfInst(inst) or VS.shotKind
 	connect(inst:GetPropertyChangedSignal("Color"), function()
+		VS.run(VS.kindOfInst(inst) or gk, function()
 		if not selected then return end
 		if not VS.kindEnabled(inst) then return end
 		local fine
@@ -1278,9 +1306,10 @@ local function guardEffect(inst)
 		if not fine then
 			paint(inst, colorFor(inst), false)
 		end
+		end)
 	end)
 end
-local function paintGun(tool)
+local function paintGunRaw(tool)
 	local kind = hooked[tool] or "gun"
 	if not VS.itemOn[kind] then return 0 end
 	if not selected then
@@ -1301,6 +1330,9 @@ local function paintGun(tool)
 	end
 	if ref and wantsSheen() then addSheen(ref) end
 	return effects
+end
+local function paintGun(tool)
+	return VS.run(hooked[tool] or "gun", paintGunRaw, tool) or 0
 end
 local function gunAssetIds(kind)
 	kind = kind or "gun"
@@ -1331,67 +1363,72 @@ local function watchTarget(target)
 	watchedTargets[target] = true
 	connect(target.DescendantAdded, function(d)
 		task.defer(function()
-			if selected and VS.itemOn.gun and d.Parent then
-				paint(d, colorFor(d), false)
-			end
+			VS.run("gun", function()
+				if selected and VS.itemOn.gun and d.Parent then
+					VS.hipKind[d] = "gun"
+					paint(d, colorFor(d), false)
+				end
+			end)
 		end)
 	end)
 end
 local function paintHip()
 	local char = LocalPlayer.Character
-	if not (selected and char) then return 0 end
+	if not (VS.anyActive() and char) then return 0 end
 	local done, count = {}, 0
-	local function paintOne(d)
+	local function paintOne(d, kind)
 		if done[d] then return end
 		done[d] = true
+		VS.hipKind[d] = kind
 		if paint(d, colorFor(d), false) and d:IsA("BasePart") then
 			count += 1
 		end
 	end
-	local target = VS.itemOn.gun and hipTarget(char) or nil
-	if target then
-		watchTarget(target)
-		local targetRef = mapRainbow(partsUnder(target))
-		paintOne(target)
-		for _, d in ipairs(target:GetDescendants()) do
-			paintOne(d)
-		end
-		if targetRef and wantsSheen() then addSheen(targetRef) end
+	local function ownedBy(d, ids)
+		local okt, tex = pcall(function() return d.TextureID end)
+		local okm, mesh = pcall(function() return d.MeshId end)
+		return (okt and tex ~= "" and ids[tex]) or (okm and mesh ~= "" and ids[mesh])
 	end
-	local ids = VS.itemOn.gun and gunAssetIds("gun") or {}
-	local matched = {}
-	for _, d in ipairs(char:GetDescendants()) do
-		if d:IsA("MeshPart") and not done[d] and not d:FindFirstAncestorOfClass("Tool") then
-			local okt, tex = pcall(function() return d.TextureID end)
-			local okm, mesh = pcall(function() return d.MeshId end)
-			if (okt and tex ~= "" and ids[tex]) or (okm and mesh ~= "" and ids[mesh]) then
+	-- the gun on your hip / back
+	VS.run("gun", function()
+		if not (selected and VS.itemOn.gun) then return end
+		local target = hipTarget(char)
+		if target then
+			watchTarget(target)
+			local targetRef = mapRainbow(partsUnder(target))
+			paintOne(target, "gun")
+			for _, d in ipairs(target:GetDescendants()) do
+				paintOne(d, "gun")
+			end
+			if targetRef and wantsSheen() then addSheen(targetRef) end
+		end
+		local ids = gunAssetIds("gun")
+		local matched = {}
+		for _, d in ipairs(char:GetDescendants()) do
+			if d:IsA("MeshPart") and not done[d] and not d:FindFirstAncestorOfClass("Tool") and ownedBy(d, ids) then
 				table.insert(matched, d)
 			end
 		end
-	end
-	local matchedRef = mapRainbow(matched)
-	for _, d in ipairs(matched) do
-		paintOne(d)
-	end
-	if matchedRef and wantsSheen() then addSheen(matchedRef) end
+		local matchedRef = mapRainbow(matched)
+		for _, d in ipairs(matched) do paintOne(d, "gun") end
+		if matchedRef and wantsSheen() then addSheen(matchedRef) end
+	end)
 	-- knives / bombs: a copy of the item on your hip or back (any part of you that uses the item's mesh)
 	for _, kind in ipairs(VS.ORDER) do
 		if kind ~= "gun" and VS.itemOn[kind] then
-			local kindIds = gunAssetIds(kind)
-			if next(kindIds) then
+			VS.run(kind, function()
+				if not selected then return end
+				local kindIds = gunAssetIds(kind)
+				if not next(kindIds) then return end
 				local list = {}
 				for _, d in ipairs(char:GetDescendants()) do
-					if d:IsA("MeshPart") and not done[d] and not d:FindFirstAncestorOfClass("Tool") then
-						local okt, tex = pcall(function() return d.TextureID end)
-						local okm, mesh = pcall(function() return d.MeshId end)
-						if (okt and tex ~= "" and kindIds[tex]) or (okm and mesh ~= "" and kindIds[mesh]) then
-							table.insert(list, d)
-						end
+					if d:IsA("MeshPart") and not done[d] and not d:FindFirstAncestorOfClass("Tool") and ownedBy(d, kindIds) then
+						table.insert(list, d)
 					end
 				end
 				mapRainbow(list)
-				for _, d in ipairs(list) do paintOne(d) end
-			end
+				for _, d in ipairs(list) do paintOne(d, kind) end
+			end)
 		end
 	end
 	return count
@@ -1431,34 +1468,38 @@ local function ensureTrail(key, getParts, gripFn)
 end
 -- trails go on the gun in your hand AND the one on your hip
 local function refreshTrails()
-	if not (trailOn and selected) then
+	if not trailOn then
 		for key in pairs(trails) do removeTrail(key) end
 		return
 	end
 	for tool, kind in pairs(hooked) do
 		local def = VS.BYKIND[kind]
-		if tool.Parent and tool.Parent == LocalPlayer.Character and VS.itemOn[kind] and def and def.trail then
-			ensureTrail(tool, function() return partsUnder(tool) end, handPosition)
+		if tool.Parent and tool.Parent == LocalPlayer.Character and VS.itemOn[kind] and def and def.trail and VS.sel(kind) then
+			VS.run(kind, ensureTrail, tool, function() return partsUnder(tool) end, handPosition)
 		else
 			removeTrail(tool)
 		end
 	end
-	if VS.itemOn.gun then
+	if VS.itemOn.gun and VS.sel("gun") then
 		for key, parts in pairs(hipGroups()) do
-			ensureTrail(key, function() return parts end, handleGrip)
+			VS.run("gun", ensureTrail, key, function() return parts end, handleGrip)
+		end
+	else
+		for key in pairs(trails) do
+			if type(key) == "string" then removeTrail(key) end
 		end
 	end
 end
 local lastTrailCheck = 0
 connect(RunService.Heartbeat, function()
-	if not (trailOn and selected) then return end
+	if not trailOn then return end
 	local now = os.clock()
 	if now - lastTrailCheck < 1.5 then return end
 	lastTrailCheck = now
 	refreshTrails() -- keeps trails alive if the game swaps / re-creates the gun
 end)
 local function refreshHip()
-	if not selected then return end
+	if not VS.anyActive() then return end
 	local n = paintHip()
 	if n > 0 then
 		setHipStatus("Hip gun: recoloured (" .. n .. " part(s))")
@@ -1485,7 +1526,7 @@ local function watchCharacter(char)
 		if d.Name == "DisplayRefGun" and d:IsA("ObjectValue") then
 			hookRef(d)
 			queueHipRefresh()
-		elseif selected and d:IsA("MeshPart") then
+		elseif VS.anyActive() and d:IsA("MeshPart") then
 			queueHipRefresh()
 		end
 	end)
@@ -1527,7 +1568,7 @@ local function hookGun(tool, kind)
 		task.delay(5, prebuildTextures, tool) -- builds the rainbow texture quietly in the background (after load) so picking Rainbow is quick
 	end
 	local effects = paintGun(tool)
-	if selected then
+	if VS.anyActive() then
 		setGunStatus("Gun: found, " .. effects .. " beam part(s)")
 		refreshHip()
 	else
@@ -1540,22 +1581,24 @@ local function hookGun(tool, kind)
 		guardEffect(d)
 		watchSound(d, kind)
 		task.defer(function()
-			if selected and VS.itemOn[kind] and d.Parent then
-				paint(d, colorFor(d), false)
-			end
+			VS.run(kind, function()
+				if selected and VS.itemOn[kind] and d.Parent then
+					paint(d, colorFor(d), false)
+				end
+			end)
 		end)
 	end)
 	connect(tool.Activated, function() openShotWindow(kind) end)
 	-- the trail is only on while the gun is in your hands
 	connect(tool.Equipped, function()
 		task.delay(0.3, function() -- give the game a moment to attach the gun to your hand
-			if trailOn and selected then refreshTrails() end
+			if trailOn then refreshTrails() end
 		end)
 	end)
 	connect(tool.Unequipped, function()
 		removeTrail(tool)
 	end)
-	if trailOn and selected and tool.Parent == LocalPlayer.Character then
+	if trailOn and tool.Parent == LocalPlayer.Character then
 		task.delay(0.3, refreshTrails)
 	end
 	if VS.refreshUi then VS.refreshUi() end
@@ -1636,7 +1679,7 @@ local function nearYou(d)
 	return false
 end
 connect(Workspace.DescendantAdded, function(d)
-	if not selected then return end
+	if not VS.sel(VS.shotKind) then return end
 	if not VS.shotFxOn then return end -- the SHOT FX switch
 	if os.clock() > shotUntil then return end
 	if not VS.itemOn[VS.shotKind] then return end
@@ -1645,7 +1688,9 @@ connect(Workspace.DescendantAdded, function(d)
 		if char ~= LocalPlayer.Character then return end
 		if not (isEffect(d) or d:IsA("Light")) then return end
 	end
+	local shotKind = VS.shotKind
 	task.defer(function()
+		VS.run(shotKind, function()
 		if not d.Parent or not selected then return end
 		if not nearYou(d) then return end
 		if d:IsA("Beam") then
@@ -1657,14 +1702,16 @@ connect(Workspace.DescendantAdded, function(d)
 			task.delay(0.05, learn)
 		end
 		-- knife / bomb projectiles keep their texture (tinted); gun shots become solid glowing colour as before
-		if paint(d, colorFor(d), not (VS.shotKind ~= "gun" and d:IsA("MeshPart"))) then
+		if paint(d, colorFor(d), not (shotKind ~= "gun" and d:IsA("MeshPart"))) then
 			guardEffect(d)
 			shotCount += 1
 		end
+		end)
 	end)
 end)
 local function updateStatus()
 	if VS.refreshUi then VS.refreshUi() end
+	local cur = VS.currentEntry() -- the colour of whichever page is open
 	if glassToggleBtn then
 		glassToggleBtn.Text = glassOverlay and "SEE-THROUGH: ON" or "SEE-THROUGH: OFF"
 	end
@@ -1678,12 +1725,12 @@ local function updateStatus()
 		trailToggleBg.BackgroundColor3 = trailOn and Color3.fromRGB(0, 105, 190) or Color3.fromRGB(78, 80, 92)
 	end
 	if statusLabel then
-		statusLabel.Text = selected and ("Selected: " .. selected.name) or "Selected: Default"
+		statusLabel.Text = cur and ("Selected: " .. cur.name) or "Selected: Default"
 	end
 	for name, bg in pairs(buttons) do
 		local stroke = bg:FindFirstChildOfClass("UIStroke")
 		if stroke then
-			local on = (selected ~= nil and selected.name == name)
+			local on = (cur ~= nil and cur.name == name)
 			stroke.Color = on and BUTTON_SELECTED or BUTTON_OUTLINE
 			stroke.Thickness = on and 2.5 or 1
 			stroke.Transparency = on and 0 or 0.45
@@ -1691,6 +1738,11 @@ local function updateStatus()
 	end
 end
 local function applyColor(entry)
+	if VS.tab ~= "all" then -- an item's own page: colour just that item
+		VS.applyItemColor(VS.tab, entry)
+		return
+	end
+	for k in pairs(VS.override) do VS.override[k] = nil end -- the ALL page colours everything
 	selected = entry -- set first, so nothing puts the glass look back while we undo it
 	if not glassWanted() then unglassAll() end -- leaving Glass: bring the solid gun back
 	if not wantsSheen() then -- no glow lights for this colour: take away any left over
@@ -1714,6 +1766,7 @@ local function applyColor(entry)
 	updateStatus()
 end
 local function resetColor()
+	for k in pairs(VS.override) do VS.override[k] = nil end
 	selected = nil
 	glassOverlay = false
 	trailOn = false
@@ -1816,7 +1869,7 @@ end
 function VS.toggleItem(kind)
 	VS.itemOn[kind] = not VS.itemOn[kind]
 	if VS.itemOn[kind] then
-		if selected or VS.finishWanted() then
+		if VS.anyActive() or VS.finishWanted() then
 			for tool, k in pairs(hooked) do
 				if k == kind and tool.Parent then paintGun(tool) end
 			end
@@ -1831,7 +1884,7 @@ end
 function VS.cycleFinish()
 	VS.finishIdx = VS.finishIdx % #VS.FINISHES + 1
 	VS.unfinishAll()
-	if selected or VS.finishWanted() then
+	if VS.anyActive() or VS.finishWanted() then
 		for tool, kind in pairs(hooked) do
 			if tool.Parent and VS.itemOn[kind] then paintGun(tool) end
 		end
@@ -1839,9 +1892,47 @@ function VS.cycleFinish()
 	end
 	updateStatus()
 end
-function VS.newRow(ctx, height)
+-- colour one item only (from its own page)
+function VS.applyItemColor(kind, entry)
+	VS.restoreKind(kind) -- start from the game's own look
+	VS.override[kind] = entry
+	for tool, k in pairs(hooked) do
+		if k == kind and tool.Parent then paintGun(tool) end
+	end
+	refreshHip()
+	refreshTrails()
+	updateStatus()
+end
+-- put one item back to following the ALL page
+function VS.resetItem(kind)
+	VS.override[kind] = nil
+	VS.restoreKind(kind)
+	if selected or VS.finishWanted() then
+		for tool, k in pairs(hooked) do
+			if k == kind and tool.Parent then paintGun(tool) end
+		end
+		refreshHip()
+		refreshTrails()
+	end
+	setNote("")
+	updateStatus()
+end
+-- switch the menu page: "all" or an item kind
+function VS.setTab(tab)
+	VS.tab = tab
+	local isAll = (tab == "all")
+	for _, f in ipairs(VS.ui.allOnly) do f.Visible = isAll end
+	for _, f in ipairs(VS.ui.itemOnly) do f.Visible = not isAll end
+	if VS.ui.title then
+		VS.ui.title.Text = isAll and "ALL ITEMS  -  one colour for everything"
+			or (VS.BYKIND[tab].label .. "  -  its own colour (RESET ITEM = follow ALL)")
+	end
+	setNote("")
+	updateStatus()
+end
+function VS.newRow(ctx, height, order)
 	local row = Instance.new("Frame")
-	row.LayoutOrder = ctx.nextOrder()
+	row.LayoutOrder = order or ctx.nextOrder()
 	row.Size = UDim2.new(1, 0, 0, height)
 	row.BackgroundTransparency = 1
 	row.Parent = ctx.content
@@ -1854,17 +1945,13 @@ function VS.newRow(ctx, height)
 	return row
 end
 
--- custom colour picker (hex / r,g,b box + hue / saturation / brightness sliders) and the saved-colour slots
+-- custom colour picker (hex / r,g,b box + hue / saturation / brightness sliders) - lives under MORE OPTIONS
 function VS.buildPicker(ctx)
 	local glassButton, photoText = ctx.glassButton, ctx.photoText
 	local c = VS.custom
 	local function curColor() return Color3.fromHSV(c.h, c.s, c.v) end
-	local function rgbOf(col)
-		return { math.floor(col.R * 255 + 0.5), math.floor(col.G * 255 + 0.5), math.floor(col.B * 255 + 0.5) }
-	end
 	local function hexOf(col)
-		local t = rgbOf(col)
-		return string.format("#%02X%02X%02X", t[1], t[2], t[3])
+		return string.format("#%02X%02X%02X", math.floor(col.R * 255 + 0.5), math.floor(col.G * 255 + 0.5), math.floor(col.B * 255 + 0.5))
 	end
 	local function styleBox(inst)
 		Instance.new("UICorner", inst).CornerRadius = UDim.new(0, 8)
@@ -1876,8 +1963,9 @@ function VS.buildPicker(ctx)
 		st.Parent = inst
 	end
 
-	-- row 1: swatch | hex box | APPLY | SAVE
+	-- swatch | hex box | APPLY
 	local rowA = VS.newRow(ctx, 28)
+	table.insert(VS.ui.advanced, rowA)
 	local swatch = Instance.new("Frame")
 	swatch.LayoutOrder = 1
 	swatch.Size = UDim2.new(0, 28, 1, 0)
@@ -1886,7 +1974,7 @@ function VS.buildPicker(ctx)
 	styleBox(swatch)
 	local hexBox = Instance.new("TextBox")
 	hexBox.LayoutOrder = 2
-	hexBox.Size = UDim2.new(1, -180, 1, 0)
+	hexBox.Size = UDim2.new(1, -114, 1, 0)
 	hexBox.BackgroundColor3 = Color3.fromRGB(22, 23, 30)
 	hexBox.BackgroundTransparency = 0.15
 	hexBox.BorderSizePixel = 0
@@ -1894,7 +1982,7 @@ function VS.buildPicker(ctx)
 	hexBox.Font = BUBBLY_FONT
 	hexBox.TextSize = 14
 	hexBox.TextColor3 = Color3.new(1, 1, 1)
-	hexBox.PlaceholderText = "#RRGGBB  or  255,128,0"
+	hexBox.PlaceholderText = "own colour: #RRGGBB or 255,128,0"
 	hexBox.PlaceholderColor3 = Color3.fromRGB(130, 132, 150)
 	hexBox.Text = ""
 	hexBox.Parent = rowA
@@ -1921,49 +2009,9 @@ function VS.buildPicker(ctx)
 	local function applyCustom()
 		applyColor({ name = "Custom", color = curColor() })
 	end
-
-	-- the saved slots (declared here so SAVE can refresh them)
-	local slotBg, slotTb = {}, {}
-	local function slotColor(i)
-		local t = VS.saved[i]
-		return t and Color3.fromRGB(t[1], t[2], t[3]) or nil
-	end
-	local function refreshSlots()
-		for i = 1, VS.SAVED_SLOTS do
-			local col = slotColor(i)
-			if col then
-				slotBg[i].BackgroundColor3 = colorsClose(col, Color3.new(0, 0, 0)) and Color3.fromRGB(40, 40, 46) or col
-				slotTb[i].Text = ""
-			else
-				slotBg[i].BackgroundColor3 = Color3.fromRGB(60, 62, 74)
-				slotTb[i].Text = "+"
-			end
-		end
-	end
-	local function saveCurrent()
-		local rgb = rgbOf(curColor())
-		local slot
-		for i = 1, VS.SAVED_SLOTS do
-			if not VS.saved[i] then slot = i break end
-		end
-		if slot then
-			VS.saved[slot] = rgb
-		else -- all full: the oldest one drops off
-			table.remove(VS.saved, 1)
-			table.insert(VS.saved, rgb)
-			slot = VS.SAVED_SLOTS
-		end
-		VS.writeSaved()
-		refreshSlots()
-		setNote("Saved to slot " .. slot)
-	end
-
 	local applyBg, _, applyHolder = glassButton(rowA, 3, "APPLY", Color3.fromRGB(0, 105, 190), nil, applyCustom)
 	applyHolder.Size = UDim2.new(0, 74, 1, 0)
 	buttons["Custom"] = applyBg
-	local _, _, saveHolder = glassButton(rowA, 4, "SAVE", Color3.fromRGB(84, 84, 100), nil, saveCurrent)
-	saveHolder.Size = UDim2.new(0, 60, 1, 0)
-
 	hexBox.FocusLost:Connect(function(enterPressed)
 		local col = VS.parseColor(hexBox.Text)
 		if col then
@@ -1975,8 +2023,9 @@ function VS.buildPicker(ctx)
 		end
 	end)
 
-	-- row 2: hue / saturation / brightness sliders
+	-- hue / saturation / brightness sliders
 	local rowB = VS.newRow(ctx, 22)
+	table.insert(VS.ui.advanced, rowB)
 	local function makeSlider(order, text, onChange)
 		local bar = Instance.new("Frame")
 		bar.LayoutOrder = order
@@ -1987,7 +2036,7 @@ function VS.buildPicker(ctx)
 		styleBox(bar)
 		local grad = Instance.new("UIGradient")
 		grad.Parent = bar
-		local hit = Instance.new("TextButton") -- a transparent button on top takes the clicks (and keeps the menu from being dragged)
+		local hit = Instance.new("TextButton")
 		hit.Size = UDim2.new(1, 0, 1, 0)
 		hit.BackgroundTransparency = 1
 		hit.BorderSizePixel = 0
@@ -2051,60 +2100,84 @@ function VS.buildPicker(ctx)
 		table.insert(hueKeys, ColorSequenceKeypoint.new(i / 6, Color3.fromHSV(i / 6, 1, 1)))
 	end
 	hueS.grad.Color = ColorSequence.new(hueKeys)
-
-	-- row 3: saved colours (click an empty slot to save the current colour there, click a filled one to use it,
-	-- right-click a filled one to remove it) + CLEAR
-	local rowC = VS.newRow(ctx, 28)
-	for i = 1, VS.SAVED_SLOTS do
-		local bg, tb, holder = glassButton(rowC, i, "+", Color3.fromRGB(60, 62, 74), nil, function()
-			local col = slotColor(i)
-			if col then
-				setCustom(col)
-				applyColor({ name = "Saved" .. i, color = col })
-			else
-				VS.saved[i] = rgbOf(curColor())
-				VS.writeSaved()
-				refreshSlots()
-				setNote("Saved to slot " .. i)
-			end
-		end)
-		holder.Size = UDim2.new(1 / 7, -6, 1, 0)
-		tb.MouseButton2Click:Connect(function()
-			if VS.saved[i] then
-				VS.saved[i] = false
-				VS.writeSaved()
-				refreshSlots()
-			end
-		end)
-		slotBg[i], slotTb[i] = bg, tb
-		buttons["Saved" .. i] = bg
-	end
-	local _, _, clearHolder = glassButton(rowC, VS.SAVED_SLOTS + 1, "CLEAR", Color3.fromRGB(125, 30, 30), nil, function()
-		for i = 1, VS.SAVED_SLOTS do VS.saved[i] = false end
-		VS.writeSaved()
-		refreshSlots()
-		setNote("Saved colours cleared")
-	end)
-	clearHolder.Size = UDim2.new(1 / 7, -6, 1, 0)
-
 	refreshSwatch()
 	refreshSliders()
-	refreshSlots()
 end
 
--- per-item switches, FINISH, SHOT FX and the "found" line
-function VS.buildOptions(ctx)
+-- left column: one big ON/OFF switch per item. right pane: everything else.
+function VS.buildBody(ctx)
 	local glassButton = ctx.glassButton
-	local ON, OFF = Color3.fromRGB(0, 105, 190), Color3.fromRGB(78, 80, 92)
-	local itemUi = {}
-	local row1 = VS.newRow(ctx, 28)
+	local body = Instance.new("Frame")
+	body.Name = "Body"
+	body.LayoutOrder = ctx.nextOrder()
+	body.Size = UDim2.new(1, 0, 0, 0)
+	body.AutomaticSize = Enum.AutomaticSize.Y
+	body.BackgroundTransparency = 1
+	body.Parent = ctx.content
+	local bodyLayout = Instance.new("UIListLayout")
+	bodyLayout.FillDirection = Enum.FillDirection.Horizontal
+	bodyLayout.Padding = UDim.new(0, 8)
+	bodyLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	bodyLayout.Parent = body
+
+	local side = Instance.new("Frame")
+	side.Name = "Switches"
+	side.LayoutOrder = 1
+	side.Size = UDim2.new(0, 112, 0, 0)
+	side.AutomaticSize = Enum.AutomaticSize.Y
+	side.BackgroundTransparency = 1
+	side.Parent = body
+	local sideLayout = Instance.new("UIListLayout")
+	sideLayout.Padding = UDim.new(0, 6)
+	sideLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	sideLayout.Parent = side
+	local sideTitle = label(side, 0, "Turn on / off:", 13, Color3.new(1, 1, 1), 18)
+	sideTitle.Font = BUBBLY_FONT
+	sideTitle.TextXAlignment = Enum.TextXAlignment.Left
 	for i, kind in ipairs(VS.ORDER) do
-		local bg, tb, holder = glassButton(row1, i, VS.BYKIND[kind].label .. ": ON", ON, nil, function()
+		local bg, tb, holder = glassButton(side, i, VS.BYKIND[kind].label .. "\nON", VS.GREEN, nil, function()
 			VS.toggleItem(kind)
 		end)
-		holder.Size = UDim2.new(1 / 4, -5, 1, 0)
-		itemUi[kind] = { bg = bg, tb = tb }
+		holder.Size = UDim2.new(1, 0, 0, 42)
+		VS.toggleBtn[kind] = { bg = bg, tb = tb }
 	end
+
+	local main = Instance.new("Frame")
+	main.Name = "Main"
+	main.LayoutOrder = 2
+	main.Size = UDim2.new(1, -120, 0, 0)
+	main.AutomaticSize = Enum.AutomaticSize.Y
+	main.BackgroundTransparency = 1
+	main.Parent = body
+	local mainLayout = Instance.new("UIListLayout")
+	mainLayout.Padding = UDim.new(0, 6)
+	mainLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	mainLayout.Parent = main
+	local title = label(main, 0, "Pick a colour!", 14, Color3.new(1, 1, 1), 18)
+	title.Font = BUBBLY_FONT
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	ctx.content = main -- everything built after this goes in the right-hand pane
+end
+
+-- MORE OPTIONS (own colour, finish, shot fx) hidden until you press the button
+function VS.buildOptions(ctx, controls)
+	local glassButton = ctx.glassButton
+	local ON, OFF = VS.ON, VS.OFF
+	local moreRow = VS.newRow(ctx, 28)
+	local moreTb
+	local function showMore()
+		for _, f in ipairs(VS.ui.advanced) do f.Visible = VS.moreOpen end
+		moreTb.Text = VS.moreOpen and "FEWER OPTIONS" or "MORE OPTIONS"
+	end
+	local _, tb, moreHolder = glassButton(moreRow, 1, "MORE OPTIONS", OFF, nil, function()
+		VS.moreOpen = not VS.moreOpen
+		showMore()
+	end)
+	moreTb = tb
+	moreHolder.Size = UDim2.new(1, 0, 1, 0)
+
+	VS.buildPicker(ctx) -- own colour (added to VS.ui.advanced)
+
 	local row2 = VS.newRow(ctx, 28)
 	local finishBg, finishTb, finishHolder = glassButton(row2, 1, "FINISH: DEFAULT", OFF, nil, function()
 		VS.cycleFinish()
@@ -2119,11 +2192,14 @@ function VS.buildOptions(ctx)
 	foundLabel.TextXAlignment = Enum.TextXAlignment.Left
 	foundLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
 	foundLabel.TextStrokeTransparency = 0.5
+	table.insert(VS.ui.advanced, row2)
+	table.insert(VS.ui.advanced, foundLabel)
+
 	function VS.refreshUi()
-		for kind, ui in pairs(itemUi) do
+		for kind, b in pairs(VS.toggleBtn) do
 			local on = VS.itemOn[kind]
-			ui.tb.Text = VS.BYKIND[kind].label .. (on and ": ON" or ": OFF")
-			ui.bg.BackgroundColor3 = on and ON or OFF
+			b.tb.Text = VS.BYKIND[kind].label .. "\n" .. (on and "ON" or "OFF")
+			b.bg.BackgroundColor3 = on and VS.GREEN or VS.RED
 		end
 		finishTb.Text = "FINISH: " .. VS.FINISHES[VS.finishIdx].name
 		finishBg.BackgroundColor3 = VS.finishIdx > 1 and ON or OFF
@@ -2140,6 +2216,7 @@ function VS.buildOptions(ctx)
 		foundLabel.Text = text
 	end
 	VS.refreshUi()
+	showMore()
 end
 
 local function buildGui()
@@ -2153,7 +2230,7 @@ local function buildGui()
 		gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 	end
 
-	local WIDTH = 440 -- wide and short: a horizontal rectangle
+	local WIDTH = 570 -- wide and short: side bar on the left, options on the right
 
 	-- bold white capitals with a soft dark outline (stays readable on the clear glass)
 	local function photoText(b, size)
@@ -2367,13 +2444,17 @@ local function buildGui()
 	local minBtn = headerButton("-", -34, Color3.fromRGB(38, 40, 54))
 	local closeBtn = headerButton("X", 0, Color3.fromRGB(125, 30, 30))
 
+	-- side bar + right-hand pane (everything below goes in the pane)
+	local ctx = { content = content, nextOrder = nextOrder, glassButton = makeGlassButton, photoText = photoText }
+	VS.buildBody(ctx)
+
 	-- colour buttons: six per row, two rows (10 colours + Glass + Chroma)
 	local grid = Instance.new("Frame")
 	grid.Name = "Colours"
 	grid.LayoutOrder = nextOrder()
 	grid.Size = UDim2.new(1, 0, 0, 62)
 	grid.BackgroundTransparency = 1
-	grid.Parent = content
+	grid.Parent = ctx.content
 	local gridLayout = Instance.new("UIGridLayout")
 	gridLayout.CellSize = UDim2.new(1 / 6, -5, 0, 28)
 	gridLayout.CellPadding = UDim2.new(0, 6, 0, 6)
@@ -2395,8 +2476,6 @@ local function buildGui()
 		Color3.new(1, 1, 1), RAINBOW_SEQUENCE, function() applyColor(RAINBOW) end))
 
 	-- custom colour picker + saved colours
-	local ctx = { content = content, nextOrder = nextOrder, glassButton = makeGlassButton, photoText = photoText }
-	VS.buildPicker(ctx)
 
 	-- controls row: See-through / Trail / Reset
 	local controls = Instance.new("Frame")
@@ -2404,7 +2483,7 @@ local function buildGui()
 	controls.LayoutOrder = nextOrder()
 	controls.Size = UDim2.new(1, 0, 0, 28)
 	controls.BackgroundTransparency = 1
-	controls.Parent = content
+	controls.Parent = ctx.content
 	local controlsLayout = Instance.new("UIListLayout")
 	controlsLayout.FillDirection = Enum.FillDirection.Horizontal
 	controlsLayout.Padding = UDim.new(0, 6)
@@ -2437,9 +2516,9 @@ local function buildGui()
 	controlButton(3, "RESET TO DEFAULT", Color3.fromRGB(84, 84, 100), resetColor)
 
 	-- per-item switches, finish, shot fx
-	VS.buildOptions(ctx)
+	VS.buildOptions(ctx, controls)
 
-	noteLabel = label(content, nextOrder(), "", 11, Color3.fromRGB(150, 150, 170), 14)
+	noteLabel = label(ctx.content, nextOrder(), "", 11, Color3.fromRGB(150, 150, 170), 14)
 	noteLabel.TextXAlignment = Enum.TextXAlignment.Left
 	noteLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
 	noteLabel.TextStrokeTransparency = 0.5
