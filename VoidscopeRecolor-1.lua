@@ -17,6 +17,22 @@ local TRAIL_LIFETIME = 0.8   -- how long the trail lingers (seconds)
 local TRAIL_WIDTH = 0.4      -- how thick the trail is at the tip (studs)
 local TRAIL_FLIP = false     -- if the trail comes off the wrong end of the gun, set this to true
 
+-- button shine for the two special scopes (gold bands / icy diamond facets)
+local GOLD_SEQ = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 240, 160)),
+	ColorSequenceKeypoint.new(0.25, Color3.fromRGB(255, 200, 40)),
+	ColorSequenceKeypoint.new(0.5, Color3.fromRGB(190, 130, 15)),
+	ColorSequenceKeypoint.new(0.75, Color3.fromRGB(255, 218, 85)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 240, 160)),
+})
+local DIAMOND_SEQ = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(230, 252, 255)),
+	ColorSequenceKeypoint.new(0.3, Color3.fromRGB(130, 215, 255)),
+	ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
+	ColorSequenceKeypoint.new(0.7, Color3.fromRGB(150, 225, 255)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(225, 248, 255)),
+})
+
 local COLORS = {
 	{ name = "Red",        color = Color3.fromRGB(255, 0, 0) },
 	{ name = "Green",      color = Color3.fromRGB(0, 255, 0) },
@@ -29,6 +45,12 @@ local COLORS = {
 	-- flat pastel pink: a plain colour tint, so the gun keeps its own texture detail
 	{ name = "Pink",       color = Color3.fromRGB(255, 190, 215) },
 	{ name = "Rainbow",    color = Color3.fromRGB(255, 60, 200), mode = "texture", texStyle = "rainbow", gradient = true, rainbowFx = true },
+	-- GOLD: polished shiny metal, bands of light and deep gold along the gun, warm glints
+	{ name = "Gold",       color = Color3.fromRGB(255, 200, 40), mode = "metal", reflectance = 0.7,
+		sheenA = Color3.fromRGB(255, 225, 100), sheenB = Color3.fromRGB(255, 150, 30), btnGradient = GOLD_SEQ },
+	-- DIAMOND: icy see-through crystal, mirror shine, pink + teal sparkle
+	{ name = "Diamond",    color = Color3.fromRGB(185, 242, 255), mode = "diamond", forceGlass = true, glassT = 0.3, reflectance = 0.6,
+		sheenA = Color3.fromRGB(150, 240, 255), sheenB = Color3.fromRGB(255, 170, 235), btnGradient = DIAMOND_SEQ },
 }
 local RAINBOW_SPIN = 0.08
 local RAINBOW = { name = "Chroma", color = Color3.fromRGB(255, 80, 200), mode = "rainbow" }
@@ -108,7 +130,7 @@ local applied = setmetatable({}, { __mode = "k" })    -- meshPart -> edited text
 local surfaces = setmetatable({}, { __mode = "k" })  -- meshPart -> SurfaceAppearance we added (the tint)
 local overlays = setmetatable({}, { __mode = "k" })  -- meshPart -> Highlight we added (colour wash)
 local watchedTargets = setmetatable({}, { __mode = "k" })
-local rainbowT = setmetatable({}, { __mode = "k" })       -- part -> 0..1, where it sits along the gun (rainbow / pearl)
+local rainbowT = setmetatable({}, { __mode = "k" })       -- part -> 0..1, where it sits along the gun (rainbow / pearl / gold / diamond)
 local glassed = setmetatable({}, { __mode = "k" })       -- parts currently showing our glass look
 local glassGuarded = setmetatable({}, { __mode = "k" })  -- parts we already watch for the game making them solid again
 local glassOverlay = false  -- the "See-through" switch: keep the glass look on any colour
@@ -117,7 +139,7 @@ local trails = setmetatable({}, { __mode = "k" })        -- tool -> { trail, a0,
 local unglassing = false
 local chromed = setmetatable({}, { __mode = "k" })       -- meshes currently showing the chrome look
 local flatSpread = setmetatable({}, { __mode = "k" })    -- parts of a gun that is a single piece (no end-to-end spread to colour)
-local sheens = setmetatable({}, { __mode = "k" })        -- gun part -> the two glow lights we added to it (only if GLASS_SHEEN is on)
+local sheens = setmetatable({}, { __mode = "k" })        -- gun part -> the two glow lights we added to it
 local lastSpin = 0
 local hipQueued = false
 local gui, gunLabel, hipLabel, statusLabel, noteLabel
@@ -161,6 +183,13 @@ end
 local function isEffect(inst)
 	return inst:IsA("Beam") or inst:IsA("Trail") or inst:IsA("ParticleEmitter")
 end
+-- the shiny looks (Glass, Gold, Diamond) all use the chrome path
+local function isChrome()
+	return selected ~= nil and (selected.mode == "pearl" or selected.mode == "metal" or selected.mode == "diamond")
+end
+local function glassT()
+	return (selected and selected.glassT) or GLASS_TRANSPARENCY
+end
 local function partsUnder(root)
 	local list = {}
 	if root:IsA("BasePart") then table.insert(list, root) end
@@ -170,7 +199,7 @@ local function partsUnder(root)
 	return list
 end
 local function mapRainbow(parts)
-	if not (selected and (selected.mode == "rainbow" or selected.mode == "pearl"
+	if not (selected and (selected.mode == "rainbow" or isChrome()
 		or (selected.mode == "texture" and selected.texStyle == "rainbow"))) then return end
 	local seen = {}
 	for _, p in ipairs(parts) do
@@ -215,6 +244,18 @@ local function colorFor(inst)
 		local t = rainbowT[inst]
 		if not t or flatSpread[inst] then return Color3.fromRGB(238, 238, 244) end
 		return Color3.fromHSV(0.5 + t * 0.42, 0.16, 0.95)
+	elseif mode == "metal" then
+		-- gold: bands of bright and deep gold along the gun, like light sliding over polished metal
+		local t = rainbowT[inst]
+		if not t or flatSpread[inst] then return selected.color end
+		local w = 0.5 + 0.5 * math.sin(t * math.pi * 5)
+		return Color3.fromRGB(math.floor(190 + 65 * w), math.floor(130 + 85 * w), math.floor(15 + 75 * w))
+	elseif mode == "diamond" then
+		-- diamond: icy blue-white facets with a hint of cyan
+		local t = rainbowT[inst]
+		if not t or flatSpread[inst] then return selected.color end
+		local w = 0.5 + 0.5 * math.sin(t * math.pi * 4)
+		return Color3.fromHSV(0.47 + 0.1 * w, 0.22 + 0.2 * (1 - w), 1)
 	end
 	return selected and selected.color or Color3.new(1, 1, 1)
 end
@@ -306,7 +347,7 @@ local function chromeMesh(mp, color)
 	removeSurface(mp)
 	set(mp, "TextureID", "")
 	set(mp, "Material", glassed[mp] and Enum.Material.Glass or Enum.Material.Metal)
-	set(mp, "Reflectance", CHROME_REFLECTANCE)
+	set(mp, "Reflectance", (selected and selected.reflectance) or CHROME_REFLECTANCE)
 	set(mp, "Color", color)
 	chromed[mp] = true
 end
@@ -346,7 +387,9 @@ local function addSheen(part)
 	end
 	local offset = along(axes[2][1], axes[2][2] / 2 + 0.8) + along(axes[3][1], axes[3][2] / 2 + 0.8)
 	local made = {}
-	local specs = { { SHEEN_PINK, offset }, { SHEEN_TEAL, -offset } }
+	local cA = (selected and selected.sheenA) or SHEEN_PINK
+	local cB = (selected and selected.sheenB) or SHEEN_TEAL
+	local specs = { { cA, offset }, { cB, -offset } }
 	for _, spec in ipairs(specs) do
 		local att = Instance.new("Attachment")
 		att.Name = "VSSheen"
@@ -364,7 +407,7 @@ local function addSheen(part)
 	sheens[part] = made
 end
 local function wantsSheen()
-	return selected ~= nil and selected.mode == "pearl" and selected.sheen ~= false
+	return isChrome() and selected.sheen ~= false
 end
 local AssetService = game:GetService("AssetService")
 local pinkCache = {}                     -- "style|texture id" -> { state, image, waiters }
@@ -633,7 +676,7 @@ local function ensureTexture(style, tex)
 	return entry
 end
 function tintMesh(mp, color)
-	if selected ~= nil and selected.mode == "pearl" then
+	if isChrome() then
 		chromeMesh(mp, color)
 		if not wantsSheen() then removeSheen(mp) end
 		return
@@ -706,6 +749,8 @@ local function trailColorSeq()
 	if selected == nil then return ColorSequence.new(Color3.new(1, 1, 1)) end
 	if selected.mode == "rainbow" or selected.rainbowFx then return RAINBOW_SEQUENCE end
 	if selected.mode == "pearl" then return ColorSequence.new(Color3.fromRGB(235, 240, 255)) end
+	if selected.mode == "metal" then return GOLD_SEQ end
+	if selected.mode == "diamond" then return DIAMOND_SEQ end
 	return ColorSequence.new(selected.color)
 end
 local function trailLook(trail)
@@ -935,7 +980,7 @@ local function glassWanted()
 	return glassOverlay or (selected ~= nil and (selected.mode == "glass" or selected.forceGlass == true))
 end
 local function glassify(inst)
-	set(inst, "Transparency", GLASS_TRANSPARENCY)
+	set(inst, "Transparency", glassT())
 	set(inst, "Material", Enum.Material.Glass)
 	glassed[inst] = true
 end
@@ -943,12 +988,12 @@ local function applyGlass(inst)
 	if not glassGuarded[inst] then
 		glassGuarded[inst] = true
 		connect(inst:GetPropertyChangedSignal("Transparency"), function()
-			if not unglassing and glassWanted() and inst.Transparency < GLASS_TRANSPARENCY - 0.01 then
+			if not unglassing and glassWanted() and inst.Transparency < glassT() - 0.01 then
 				glassify(inst)
 			end
 		end)
 	end
-	if inst.Transparency < GLASS_TRANSPARENCY - 0.01 then
+	if inst.Transparency < glassT() - 0.01 then
 		glassify(inst)
 	elseif glassed[inst] and inst.Material ~= Enum.Material.Glass then
 		set(inst, "Material", Enum.Material.Glass)
@@ -1016,6 +1061,10 @@ local function paint(inst, color, isShot)
 		if inst.Name == "VSTrail" then return false end -- our own trail is coloured by trailLook
 		if selected and (selected.mode == "rainbow" or selected.rainbowFx) then
 			set(inst, "Color", RAINBOW_SEQUENCE)
+		elseif selected and selected.mode == "metal" then
+			set(inst, "Color", GOLD_SEQ)
+		elseif selected and selected.mode == "diamond" then
+			set(inst, "Color", DIAMOND_SEQ)
 		else
 			set(inst, "Color", ColorSequence.new(color))
 		end
@@ -1026,7 +1075,7 @@ local function paint(inst, color, isShot)
 		return true
 	elseif inst:IsA("SurfaceAppearance") then
 		if inst.Name == "VSSurface" then return false end
-		if isShot or (selected and selected.mode == "pearl") then set(inst, "ColorMap", "") end
+		if isShot or isChrome() then set(inst, "ColorMap", "") end
 		set(inst, "Color", color)
 		return true
 	elseif inst:IsA("Decal") or inst:IsA("Texture") then
@@ -1060,6 +1109,10 @@ local function guardEffect(inst)
 		local fine
 		if selected.mode == "rainbow" or selected.rainbowFx then
 			fine = #inst.Color.Keypoints == #RAINBOW_SEQUENCE.Keypoints
+		elseif selected.mode == "metal" then
+			fine = #inst.Color.Keypoints == #GOLD_SEQ.Keypoints
+		elseif selected.mode == "diamond" then
+			fine = #inst.Color.Keypoints == #DIAMOND_SEQ.Keypoints
 		else
 			fine = seqIsColor(inst.Color, colorFor(inst))
 		end
@@ -1070,7 +1123,7 @@ local function guardEffect(inst)
 end
 local function paintGun(tool)
 	if not selected then return 0 end
-	local ref = mapRainbow(partsUnder(tool)) -- does nothing unless Rainbow / Glass is picked
+	local ref = mapRainbow(partsUnder(tool)) -- does nothing unless Rainbow / Glass / Gold / Diamond is picked
 	local effects = 0
 	for _, d in ipairs(tool:GetDescendants()) do
 		if paint(d, colorFor(d), false) and isEffect(d) then
@@ -1427,9 +1480,11 @@ local function updateStatus()
 end
 local function applyColor(entry)
 	selected = entry -- set first, so nothing puts the glass look back while we undo it
-	if not glassWanted() then unglassAll() end -- leaving Glass: bring the solid gun back
+	if not glassWanted() then unglassAll() end -- leaving Glass / Diamond: bring the solid gun back
 	if not wantsSheen() then -- no glow lights for this colour: take away any left over
 		for part in pairs(sheens) do removeSheen(part) end
+	else
+		for part in pairs(sheens) do removeSheen(part) end -- re-made below with this colour's glints
 	end
 	local found, effects = 0, 0
 	for tool in pairs(hooked) do
@@ -1528,9 +1583,9 @@ local function buildGui()
 		gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 	end
 
-	local WIDTH = 440 -- wide and short: a horizontal rectangle
+	local WIDTH = 290 -- tall and narrow: a vertical panel like the reference picture
 
-	-- bold white capitals with a soft dark outline (stays readable on the clear glass)
+	-- bold white capitals with a soft dark outline
 	local function photoText(b, size)
 		b.Font = BUBBLY_FONT
 		b.TextSize = size or 15
@@ -1539,7 +1594,7 @@ local function buildGui()
 		b.TextStrokeTransparency = 0.3
 	end
 
-	-- shiny metal: bright and dark bands like polished chrome
+	-- shiny black metal: bright and dark bands like polished black chrome
 	local METAL_FRAME = ColorSequence.new({
 		ColorSequenceKeypoint.new(0, Color3.fromRGB(12, 12, 15)),
 		ColorSequenceKeypoint.new(0.1, Color3.fromRGB(2, 2, 4)),
@@ -1560,7 +1615,7 @@ local function buildGui()
 		ColorSequenceKeypoint.new(1, Color3.fromRGB(135, 135, 144)),
 	})
 
-	-- one metallic button: a tinted see-through slab, a glossy highlight on the top half and a white rim.
+	-- one metallic button: a tinted slab, a glossy highlight on the top half and a rim.
 	-- (the text button sits on top so the shine never washes out the label)
 	local function makeGlassButton(parent, order, text, fillColor, fillGradient, onClick, transparency)
 		local holder = Instance.new("Frame")
@@ -1579,7 +1634,7 @@ local function buildGui()
 		Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 9)
 		local g = Instance.new("UIGradient")
 		if fillGradient then
-			g.Color = fillGradient          -- rainbow buttons keep their rainbow
+			g.Color = fillGradient          -- rainbow / gold / diamond buttons keep their own shine
 		else
 			g.Color = METAL_BUTTON          -- everything else gets the chrome shading over its colour
 			g.Rotation = 90
@@ -1616,9 +1671,9 @@ local function buildGui()
 		tb.AutoButtonColor = false
 		tb.ZIndex = 3
 		photoText(tb, 13)
-		tb.TextScaled = true -- long labels shrink to fit the smaller buttons
+		tb.TextScaled = true -- long labels shrink to fit
 		local limit = Instance.new("UITextSizeConstraint")
-		limit.MaxTextSize = 13
+		limit.MaxTextSize = 14
 		limit.MinTextSize = 7
 		limit.Parent = tb
 		tb.Text = text
@@ -1629,9 +1684,9 @@ local function buildGui()
 
 	local frame = Instance.new("Frame")
 	frame.Name = "Main"
-	frame.Size = UDim2.new(0, WIDTH, 0, 180) -- the height follows the content, see syncHeight below
-	frame.Position = UDim2.new(0, 20, 0.3, 0)
-	frame.BackgroundColor3 = Color3.new(1, 1, 1) -- the metal gradient below does the colouring
+	frame.Size = UDim2.new(0, WIDTH, 0, 400) -- the height follows the content, see syncHeight below
+	frame.Position = UDim2.new(0, 20, 0.15, 0)
+	frame.BackgroundColor3 = Color3.new(1, 1, 1) -- the black metal gradient below does the colouring
 	frame.BackgroundTransparency = 0
 	frame.BorderSizePixel = 0
 	frame.Active = true
@@ -1644,15 +1699,14 @@ local function buildGui()
 	frameStroke.Transparency = 0.5
 	frameStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	frameStroke.Parent = frame
-	-- a soft diagonal sheen across the glass (brighter at the corners, clearest in the middle)
 	local glassSheen = Instance.new("UIGradient")
-	glassSheen.Rotation = 20
+	glassSheen.Rotation = 70
 	glassSheen.Color = METAL_FRAME
 	glassSheen.Parent = frame
-	-- glossy reflection across the top half, like light on polished black chrome
+	-- glossy reflection across the top, like light on polished black chrome
 	local gloss = Instance.new("Frame")
 	gloss.Name = "Gloss"
-	gloss.Size = UDim2.new(1, -6, 0.5, 0)
+	gloss.Size = UDim2.new(1, -6, 0.3, 0)
 	gloss.Position = UDim2.new(0, 3, 0, 3)
 	gloss.BackgroundColor3 = Color3.new(1, 1, 1)
 	gloss.BorderSizePixel = 0
@@ -1742,70 +1796,112 @@ local function buildGui()
 	local minBtn = headerButton("-", -34, Color3.fromRGB(38, 40, 54))
 	local closeBtn = headerButton("X", 0, Color3.fromRGB(125, 30, 30))
 
-	-- colour buttons: six per row, two rows (10 colours + Glass + Chroma)
-	local grid = Instance.new("Frame")
-	grid.Name = "Colours"
-	grid.LayoutOrder = nextOrder()
-	grid.Size = UDim2.new(1, 0, 0, 62)
-	grid.BackgroundTransparency = 1
-	grid.Parent = content
-	local gridLayout = Instance.new("UIGridLayout")
-	gridLayout.CellSize = UDim2.new(1 / 6, -5, 0, 28)
-	gridLayout.CellPadding = UDim2.new(0, 6, 0, 6)
-	gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	gridLayout.Parent = grid
+	-- EXTRA FEATURES AT THE TOP: See-through + Trail, Glass + Chroma, Reset
+	local function featureRow()
+		local row = Instance.new("Frame")
+		row.LayoutOrder = nextOrder()
+		row.Size = UDim2.new(1, 0, 0, 30)
+		row.BackgroundTransparency = 1
+		row.Parent = content
+		local rl = Instance.new("UIListLayout")
+		rl.FillDirection = Enum.FillDirection.Horizontal
+		rl.Padding = UDim.new(0, 6)
+		rl.SortOrder = Enum.SortOrder.LayoutOrder
+		rl.Parent = row
+		return row
+	end
+	local row1 = featureRow()
+	glassToggleBg, glassToggleBtn = (function()
+		local bg, tb, holder = makeGlassButton(row1, 1, "SEE-THROUGH: OFF", Color3.fromRGB(78, 80, 92), nil, function()
+			glassOverlay = not glassOverlay
+			if selected then
+				applyColor(selected) -- repaints with / without the see-through look
+			else
+				updateStatus()
+			end
+		end)
+		holder.Size = UDim2.new(0.5, -3, 1, 0)
+		return bg, tb
+	end)()
+	trailToggleBg, trailToggleBtn = (function()
+		local bg, tb, holder = makeGlassButton(row1, 2, "TRAIL: OFF", Color3.fromRGB(78, 80, 92), nil, function()
+			trailOn = not trailOn
+			if trailOn and not selected then
+				setNote("Pick a scope first, the trail follows it.")
+			elseif trailOn then
+				setNote("")
+			end
+			refreshTrails()
+			updateStatus()
+		end)
+		holder.Size = UDim2.new(0.5, -3, 1, 0)
+		return bg, tb
+	end)()
+
+	local row2 = featureRow()
+	do
+		local bg, _, holder = makeGlassButton(row2, 1, string.upper(GLASS.name), Color3.fromRGB(100, 140, 170), nil,
+			function() applyColor(GLASS) end, 0.15)
+		holder.Size = UDim2.new(0.5, -3, 1, 0)
+		buttons[GLASS.name] = bg
+		local bg2, _, holder2 = makeGlassButton(row2, 2, string.upper(RAINBOW.name), Color3.new(1, 1, 1), RAINBOW_SEQUENCE,
+			function() applyColor(RAINBOW) end)
+		holder2.Size = UDim2.new(0.5, -3, 1, 0)
+		buttons[RAINBOW.name] = bg2
+	end
+
+	local row3 = featureRow()
+	do
+		local _, _, holder = makeGlassButton(row3, 1, "RESET TO DEFAULT", Color3.fromRGB(84, 84, 100), nil, resetColor)
+		holder.Size = UDim2.new(1, 0, 1, 0)
+	end
+
+	-- section label above the scrolling list
+	local scopesLabel = label(content, nextOrder(), "SCOPES", 14, Color3.new(1, 1, 1), 16)
+	scopesLabel.Font = BUBBLY_FONT
+	scopesLabel.TextXAlignment = Enum.TextXAlignment.Left
+	scopesLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+	scopesLabel.TextStrokeTransparency = 0.3
+
+	-- the colours: one vertical scrolling list, every name ends in SCOPE
+	local scroll = Instance.new("ScrollingFrame")
+	scroll.Name = "Scopes"
+	scroll.LayoutOrder = nextOrder()
+	scroll.Size = UDim2.new(1, 0, 0, 175)
+	scroll.BackgroundColor3 = Color3.new(0, 0, 0)
+	scroll.BackgroundTransparency = 0.3
+	scroll.BorderSizePixel = 0
+	scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+	scroll.ScrollBarThickness = 4
+	scroll.ScrollBarImageColor3 = Color3.fromRGB(150, 154, 170)
+	scroll.Parent = content
+	Instance.new("UICorner", scroll).CornerRadius = UDim.new(0, 10)
+	local scrollStroke = Instance.new("UIStroke")
+	scrollStroke.Color = BUTTON_OUTLINE
+	scrollStroke.Thickness = 1
+	scrollStroke.Transparency = 0.5
+	scrollStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	scrollStroke.Parent = scroll
+	local scrollPad = Instance.new("UIPadding", scroll)
+	scrollPad.PaddingTop = UDim.new(0, 6)
+	scrollPad.PaddingBottom = UDim.new(0, 6)
+	scrollPad.PaddingLeft = UDim.new(0, 6)
+	scrollPad.PaddingRight = UDim.new(0, 10)
+	local scrollList = Instance.new("UIListLayout", scroll)
+	scrollList.Padding = UDim.new(0, 6)
+	scrollList.SortOrder = Enum.SortOrder.LayoutOrder
 
 	for i, entry in ipairs(COLORS) do
 		-- a pure black button would swallow the chrome shading, so it's drawn as dark gunmetal
 		local shown = colorsClose(entry.color, Color3.new(0, 0, 0)) and Color3.fromRGB(40, 40, 46) or entry.color
-		local bg = makeGlassButton(grid, i, string.upper(entry.name), shown,
-			entry.gradient and RAINBOW_SEQUENCE or nil, function() applyColor(entry) end)
+		local grad = entry.btnGradient or (entry.gradient and RAINBOW_SEQUENCE) or nil
+		local bg, _, holder = makeGlassButton(scroll, i, string.upper(entry.name) .. "SCOPE", shown, grad,
+			function() applyColor(entry) end)
+		holder.Size = UDim2.new(1, 0, 0, 34)
 		buttons[entry.name] = bg
 	end
-	-- Glass: frosted light-blue
-	buttons[GLASS.name] = (makeGlassButton(grid, #COLORS + 1, string.upper(GLASS.name),
-		Color3.fromRGB(100, 140, 170), nil, function() applyColor(GLASS) end, 0.15))
-	-- Chroma: the live rainbow
-	buttons[RAINBOW.name] = (makeGlassButton(grid, #COLORS + 2, string.upper(RAINBOW.name),
-		Color3.new(1, 1, 1), RAINBOW_SEQUENCE, function() applyColor(RAINBOW) end))
-
-	-- controls row: See-through / Trail / Reset
-	local controls = Instance.new("Frame")
-	controls.Name = "Controls"
-	controls.LayoutOrder = nextOrder()
-	controls.Size = UDim2.new(1, 0, 0, 28)
-	controls.BackgroundTransparency = 1
-	controls.Parent = content
-	local controlsLayout = Instance.new("UIListLayout")
-	controlsLayout.FillDirection = Enum.FillDirection.Horizontal
-	controlsLayout.Padding = UDim.new(0, 6)
-	controlsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	controlsLayout.Parent = controls
-
-	local function controlButton(order2, text, fill, onClick)
-		local bg, tb, holder = makeGlassButton(controls, order2, text, fill, nil, onClick)
-		holder.Size = UDim2.new(1 / 3, -4, 1, 0)
-		return bg, tb
-	end
-	glassToggleBg, glassToggleBtn = controlButton(1, "SEE-THROUGH: OFF", Color3.fromRGB(78, 80, 92), function()
-		glassOverlay = not glassOverlay
-		if selected then
-			applyColor(selected) -- repaints with / without the see-through look
-		else
-			updateStatus()
-		end
-	end)
-	trailToggleBg, trailToggleBtn = controlButton(2, "TRAIL: OFF", Color3.fromRGB(78, 80, 92), function()
-		trailOn = not trailOn
-		if trailOn and not selected then
-			setNote("Pick a colour first, the trail follows it.")
-		elseif trailOn then
-			setNote("")
-		end
-		refreshTrails()
-		updateStatus()
-	end)
-	controlButton(3, "RESET TO DEFAULT", Color3.fromRGB(84, 84, 100), resetColor)
 
 	noteLabel = label(content, nextOrder(), "", 11, Color3.fromRGB(150, 150, 170), 14)
 	noteLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -1874,7 +1970,7 @@ local function buildGui()
 		local b = Instance.new("TextButton")
 		b.AnchorPoint = Vector2.new(0.5, 0.5)
 		b.Position = UDim2.new(xScale, 0, 0.7, 0)
-		b.Size = UDim2.new(0.25, 0, 0, 34)
+		b.Size = UDim2.new(0.3, 0, 0, 34)
 		b.BackgroundColor3 = bg
 		b.BackgroundTransparency = 0.25
 		b.BorderSizePixel = 0
@@ -1891,8 +1987,8 @@ local function buildGui()
 		s.Parent = b
 		return b
 	end
-	local yesBtn = confirmButton("YES", 0.35, Color3.fromRGB(125, 30, 30))
-	local noBtn = confirmButton("NO", 0.65, Color3.fromRGB(38, 40, 54))
+	local yesBtn = confirmButton("YES", 0.3, Color3.fromRGB(125, 30, 30))
+	local noBtn = confirmButton("NO", 0.7, Color3.fromRGB(38, 40, 54))
 
 	-- minimise
 	local minimised = false
