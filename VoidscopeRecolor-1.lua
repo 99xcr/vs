@@ -46,11 +46,11 @@ local COLORS = {
 	{ name = "Pink",       color = Color3.fromRGB(255, 190, 215) },
 	{ name = "Rainbow",    color = Color3.fromRGB(255, 60, 200), mode = "texture", texStyle = "rainbow", gradient = true, rainbowFx = true },
 	-- GOLD: polished shiny metal, bands of light and deep gold along the gun, warm glints
-	{ name = "Gold",       color = Color3.fromRGB(255, 200, 40), mode = "metal", reflectance = 0.7,
-		sheenA = Color3.fromRGB(255, 225, 100), sheenB = Color3.fromRGB(255, 150, 30), btnGradient = GOLD_SEQ },
+	{ name = "Gold",       color = Color3.fromRGB(255, 200, 40), mode = "texture", texStyle = "gold", reflectance = 0.45,
+		btnGradient = GOLD_SEQ, effectSeq = GOLD_SEQ },
 	-- DIAMOND: icy see-through crystal, mirror shine, pink + teal sparkle
-	{ name = "Diamond",    color = Color3.fromRGB(185, 242, 255), mode = "diamond", forceGlass = true, glassT = 0.3, reflectance = 0.6,
-		sheenA = Color3.fromRGB(150, 240, 255), sheenB = Color3.fromRGB(255, 170, 235), btnGradient = DIAMOND_SEQ },
+	{ name = "Diamond",    color = Color3.fromRGB(185, 242, 255), mode = "texture", texStyle = "diamond", reflectance = 0.35,
+		btnGradient = DIAMOND_SEQ, effectSeq = DIAMOND_SEQ },
 }
 local RAINBOW_SPIN = 0.08
 local RAINBOW = { name = "Chroma", color = Color3.fromRGB(255, 80, 200), mode = "rainbow" }
@@ -474,6 +474,67 @@ local TEX_STYLES = {
 		end
 	end,
 }
+-- GOLD and DIAMOND textures: painted with EditableImage from the gun's own shading
+local function buildRamp(stops)
+	local R, G, B = {}, {}, {}
+	for k = 1, 256 do
+		local pos = ((k - 1) / 255) * (#stops - 1)
+		local i = math.min(math.floor(pos) + 1, #stops - 1)
+		local f = pos - (i - 1)
+		local a, b = stops[i], stops[i + 1]
+		R[k] = a[1] + (b[1] - a[1]) * f
+		G[k] = a[2] + (b[2] - a[2]) * f
+		B[k] = a[3] + (b[3] - a[3]) * f
+	end
+	return R, G, B
+end
+local GOLD_R, GOLD_G, GOLD_B = buildRamp({
+	{ 70, 40, 0 }, { 150, 95, 5 }, { 230, 170, 20 }, { 255, 215, 70 }, { 255, 240, 150 }, { 255, 252, 225 },
+})
+local DIA_R, DIA_G, DIA_B = buildRamp({
+	{ 25, 70, 130 }, { 70, 150, 215 }, { 140, 220, 255 }, { 215, 245, 255 }, { 255, 255, 255 },
+})
+TEX_STYLES.gold = function(stats)
+	local lo, hi = stats.q(0.05), stats.q(0.95)
+	local span = math.max(hi - lo, 0.05)
+	local sin, floor = math.sin, math.floor
+	return function(lum, u, v)
+		local rel = (lum - lo) / span
+		if rel < 0 then rel = 0 elseif rel > 1 then rel = 1 end
+		-- soft diagonal streaks of light, like a polished gold bar catching the light
+		local band = 0.5 + 0.5 * sin((u * 0.8 + v * 0.5) * 22)
+		local t = rel * 0.75 + (band - 0.5) * 0.35 + 0.18
+		if t < 0 then t = 0 elseif t > 1 then t = 1 end
+		local k = floor(t * 255) + 1
+		return GOLD_R[k], GOLD_G[k], GOLD_B[k]
+	end
+end
+TEX_STYLES.diamond = function(stats)
+	local lo, hi = stats.q(0.05), stats.q(0.95)
+	local span = math.max(hi - lo, 0.05)
+	local sin, floor = math.sin, math.floor
+	return function(lum, u, v)
+		local rel = (lum - lo) / span
+		if rel < 0 then rel = 0 elseif rel > 1 then rel = 1 end
+		-- crossing facet lines
+		local f1 = 0.5 + 0.5 * sin((u + v * 0.7) * 30)
+		local f2 = 0.5 + 0.5 * sin((u * 0.6 - v) * 24)
+		local t = rel * 0.6 + f1 * 0.2 + f2 * 0.2 + 0.05
+		if t < 0 then t = 0 elseif t > 1 then t = 1 end
+		local k = floor(t * 255) + 1
+		local r, g, b = DIA_R[k], DIA_G[k], DIA_B[k]
+		-- sparkles: a few small bright white spots scattered over the surface
+		local h = sin(floor(u * 90) * 12.9898 + floor(v * 90) * 78.233) * 43758.5453
+		h = h - floor(h)
+		if h > 0.975 then
+			return 255, 255, 255
+		elseif h > 0.93 then
+			local w = (h - 0.93) / 0.045 * 0.7
+			r, g, b = r + (255 - r) * w, g + (255 - g) * w, b + (255 - b) * w
+		end
+		return r, g, b
+	end
+end
 -- styles listed here also get an edge map worked out (the value is how far, in pixels, an edge reaches)
 local TEX_EDGE_WIDTH = {}
 
@@ -687,6 +748,11 @@ function tintMesh(mp, color)
 		local okTex, tex = pcall(function() return mp.TextureID end)
 		if not okTex or type(tex) ~= "string" or tex == "" then return end
 		local style = selected.texStyle or "rainbow"
+		if selected.reflectance then -- gold / diamond: a little real metal shine on top of the painted texture
+			set(mp, "Material", Enum.Material.Metal)
+			set(mp, "Reflectance", selected.reflectance)
+			chromed[mp] = true
+		end
 		local entry = ensureTexture(style, tex)
 		if entry and entry.state == "done" and applyEdited(mp, entry.image) then
 			removeOverlay(mp)
@@ -749,8 +815,7 @@ local function trailColorSeq()
 	if selected == nil then return ColorSequence.new(Color3.new(1, 1, 1)) end
 	if selected.mode == "rainbow" or selected.rainbowFx then return RAINBOW_SEQUENCE end
 	if selected.mode == "pearl" then return ColorSequence.new(Color3.fromRGB(235, 240, 255)) end
-	if selected.mode == "metal" then return GOLD_SEQ end
-	if selected.mode == "diamond" then return DIAMOND_SEQ end
+	if selected.effectSeq then return selected.effectSeq end
 	return ColorSequence.new(selected.color)
 end
 local function trailLook(trail)
@@ -1061,10 +1126,8 @@ local function paint(inst, color, isShot)
 		if inst.Name == "VSTrail" then return false end -- our own trail is coloured by trailLook
 		if selected and (selected.mode == "rainbow" or selected.rainbowFx) then
 			set(inst, "Color", RAINBOW_SEQUENCE)
-		elseif selected and selected.mode == "metal" then
-			set(inst, "Color", GOLD_SEQ)
-		elseif selected and selected.mode == "diamond" then
-			set(inst, "Color", DIAMOND_SEQ)
+		elseif selected and selected.effectSeq then
+			set(inst, "Color", selected.effectSeq)
 		else
 			set(inst, "Color", ColorSequence.new(color))
 		end
@@ -1109,10 +1172,8 @@ local function guardEffect(inst)
 		local fine
 		if selected.mode == "rainbow" or selected.rainbowFx then
 			fine = #inst.Color.Keypoints == #RAINBOW_SEQUENCE.Keypoints
-		elseif selected.mode == "metal" then
-			fine = #inst.Color.Keypoints == #GOLD_SEQ.Keypoints
-		elseif selected.mode == "diamond" then
-			fine = #inst.Color.Keypoints == #DIAMOND_SEQ.Keypoints
+		elseif selected.effectSeq then
+			fine = #inst.Color.Keypoints == #selected.effectSeq.Keypoints
 		else
 			fine = seqIsColor(inst.Color, colorFor(inst))
 		end
@@ -1352,11 +1413,19 @@ local function hookGun(tool)
 	-- the trail is only on while the gun is in your hands
 	connect(tool.Equipped, function()
 		task.delay(0.3, function() -- give the game a moment to attach the gun to your hand
+			if selected then paintGun(tool) end
 			if trailOn and selected then refreshTrails() end
 		end)
 	end)
 	connect(tool.Unequipped, function()
 		removeTrail(tool)
+		-- gun put away: keep the effect going on the hip gun straight away
+		task.delay(0.3, function()
+			if selected then
+				refreshHip()
+				refreshTrails()
+			end
+		end)
 	end)
 	if trailOn and selected and tool.Parent == LocalPlayer.Character then
 		task.delay(0.3, refreshTrails)
@@ -1935,8 +2004,21 @@ local function buildGui()
 	handle.TextStrokeColor3 = Color3.new(0, 0, 0)
 	handle.TextStrokeTransparency = 0.3
 	handle.TextXAlignment = Enum.TextXAlignment.Right
-	handle.Text = "insp:kudo"
+	handle.Text = ""
 	handle.Parent = footer
+
+	-- credit row at the very bottom, with room to breathe
+	local credit = Instance.new("TextLabel")
+	credit.LayoutOrder = nextOrder()
+	credit.Size = UDim2.new(1, 0, 0, 26)
+	credit.BackgroundTransparency = 1
+	credit.Font = BUBBLY_FONT
+	credit.TextSize = 17
+	credit.TextColor3 = Color3.new(1, 1, 1)
+	credit.TextStrokeColor3 = Color3.new(0, 0, 0)
+	credit.TextStrokeTransparency = 0.3
+	credit.Text = "made by: FearVesta"
+	credit.Parent = content
 
 	-- "Are you sure?" popup for the close button
 	local confirm = Instance.new("Frame")
