@@ -1823,6 +1823,192 @@ local function resetColor()
 	updateStatus()
 end
 
+-- ============================================================
+-- SHADERS: glossy lighting look (client side only)
+-- bloom glow + sharp environment reflections + colour grading + optional shiny surfaces
+-- ============================================================
+local Lighting = game:GetService("Lighting")
+local shaderOn = false
+local shaderPreset = "Glossy"
+local glossLevel = 3           -- 1..5, higher = glossier
+local shinySurfaces = true     -- adds a shine (Reflectance) to map parts, can cost some FPS on huge maps
+local shaderFx = {}
+local lightingSaved = nil
+local reflSaved = setmetatable({}, { __mode = "k" })
+local shinyRun = 0
+local shinyConn = nil
+local shaderUIRefresh = nil
+local lastShaderCheck = 0
+
+local SHADER_ORDER = { "Glossy", "Warm", "Cool", "Neon" }
+local SHADER_PRESETS = {
+	Glossy = { tint = Color3.fromRGB(255, 252, 255), sat = 0.22, contrast = 0.16, bright = 0.01, threshold = 0.8,
+		ambient = Color3.fromRGB(78, 82, 100), outdoor = Color3.fromRGB(120, 126, 150),
+		top = Color3.fromRGB(255, 246, 235), bottom = Color3.fromRGB(130, 160, 215) },
+	Warm = { tint = Color3.fromRGB(255, 238, 215), sat = 0.25, contrast = 0.14, bright = 0.02, threshold = 0.8,
+		ambient = Color3.fromRGB(105, 85, 75), outdoor = Color3.fromRGB(150, 120, 100),
+		top = Color3.fromRGB(255, 214, 160), bottom = Color3.fromRGB(190, 120, 90) },
+	Cool = { tint = Color3.fromRGB(225, 240, 255), sat = 0.18, contrast = 0.16, bright = 0.0, threshold = 0.78,
+		ambient = Color3.fromRGB(60, 78, 110), outdoor = Color3.fromRGB(95, 125, 170),
+		top = Color3.fromRGB(205, 230, 255), bottom = Color3.fromRGB(90, 130, 220) },
+	Neon = { tint = Color3.fromRGB(245, 225, 255), sat = 0.4, contrast = 0.2, bright = 0.0, threshold = 0.7,
+		ambient = Color3.fromRGB(70, 50, 105), outdoor = Color3.fromRGB(110, 80, 160),
+		top = Color3.fromRGB(255, 160, 235), bottom = Color3.fromRGB(70, 200, 255) },
+}
+
+local function setLighting(prop, value)
+	pcall(function() Lighting[prop] = value end)
+end
+
+local function setProps(obj, props)
+	for k, v in pairs(props) do
+		pcall(function() obj[k] = v end)
+	end
+end
+
+local function saveLighting()
+	if lightingSaved then return end
+	lightingSaved = {}
+	local names = { "Brightness", "ExposureCompensation", "EnvironmentSpecularScale", "EnvironmentDiffuseScale",
+		"Ambient", "OutdoorAmbient", "ColorShift_Top", "ColorShift_Bottom", "ShadowSoftness" }
+	for _, name in ipairs(names) do
+		local ok, v = pcall(function() return Lighting[name] end)
+		if ok then lightingSaved[name] = v end
+	end
+end
+
+local function getFx(class, name)
+	local fx = shaderFx[name]
+	if not fx or fx.Parent ~= Lighting then
+		if fx then pcall(function() fx:Destroy() end) end
+		fx = Instance.new(class)
+		fx.Name = "VS_" .. name
+		fx.Parent = Lighting
+		shaderFx[name] = fx
+	end
+	return fx
+end
+
+-- shiny surfaces
+local function shinyTarget(part)
+	if part:IsA("Terrain") then return false end
+	if part.Transparency >= 0.95 then return false end
+	if part:FindFirstAncestorOfClass("Tool") then return false end
+	if part:FindFirstChild("VSSurface") or part:FindFirstChildOfClass("SurfaceAppearance") then return false end
+	if characterOf(part) then return false end
+	return true
+end
+
+local function shinyOne(part)
+	if not part.Parent then return end
+	local okT, target = pcall(shinyTarget, part)
+	if not (okT and target) then return end
+	local want = math.clamp(glossLevel * 0.06, 0.06, 0.3)
+	if reflSaved[part] == nil then reflSaved[part] = part.Reflectance end
+	pcall(function() part.Reflectance = math.max(reflSaved[part], want) end)
+end
+
+local function stopShiny()
+	shinyRun += 1
+	if shinyConn then
+		shinyConn:Disconnect()
+		shinyConn = nil
+	end
+	for part, original in pairs(reflSaved) do
+		pcall(function() part.Reflectance = original end)
+		reflSaved[part] = nil
+	end
+end
+
+local function startShiny()
+	shinyRun += 1
+	local run = shinyRun
+	if shinyConn then
+		shinyConn:Disconnect()
+		shinyConn = nil
+	end
+	shinyConn = Workspace.DescendantAdded:Connect(function(d)
+		if shinyRun == run and d:IsA("BasePart") then
+			task.defer(shinyOne, d)
+		end
+	end)
+	task.spawn(function()
+		local n = 0
+		for _, d in ipairs(Workspace:GetDescendants()) do
+			if shinyRun ~= run then return end
+			if d:IsA("BasePart") then
+				shinyOne(d)
+				n += 1
+				if n % 300 == 0 then task.wait() end
+			end
+		end
+	end)
+end
+
+local function removeShader()
+	for name, fx in pairs(shaderFx) do
+		pcall(function() fx:Destroy() end)
+		shaderFx[name] = nil
+	end
+	stopShiny()
+	if lightingSaved then
+		for prop, v in pairs(lightingSaved) do
+			setLighting(prop, v)
+		end
+		lightingSaved = nil
+	end
+end
+
+local function applyLook()
+	saveLighting()
+	local p = SHADER_PRESETS[shaderPreset] or SHADER_PRESETS.Glossy
+	local lvl = glossLevel
+	local k = lvl / 3
+	local base = lightingSaved or {}
+
+	-- sharp, strong reflections of the sky on everything
+	setLighting("EnvironmentSpecularScale", math.clamp(0.4 + lvl * 0.15, 0, 1))
+	setLighting("EnvironmentDiffuseScale", 0.55)
+	setLighting("ExposureCompensation", (base.ExposureCompensation or 0) + 0.12 * k)
+	setLighting("Ambient", p.ambient)
+	setLighting("OutdoorAmbient", p.outdoor)
+	setLighting("ColorShift_Top", p.top)
+	setLighting("ColorShift_Bottom", p.bottom)
+	setLighting("ShadowSoftness", 0.15)
+
+	-- rich, punchy colours
+	setProps(getFx("ColorCorrectionEffect", "Color"), {
+		Contrast = p.contrast * k, Saturation = p.sat * k, Brightness = p.bright, TintColor = p.tint,
+	})
+	-- the glossy glow on bright spots
+	setProps(getFx("BloomEffect", "Bloom"), {
+		Intensity = 0.3 + 0.3 * lvl, Size = 22 + 5 * lvl, Threshold = p.threshold,
+	})
+	-- light shafts from the sun / bright lights
+	setProps(getFx("SunRaysEffect", "Rays"), {
+		Intensity = 0.06 + 0.03 * lvl, Spread = 0.75,
+	})
+end
+
+local function applyShader()
+	if not shaderOn then
+		removeShader()
+	else
+		applyLook()
+		if shinySurfaces then startShiny() else stopShiny() end
+	end
+	if shaderUIRefresh then shaderUIRefresh() end
+end
+
+-- keeps the effects alive if the game removes / resets them
+connect(RunService.Heartbeat, function()
+	if not shaderOn then return end
+	local now = os.clock()
+	if now - lastShaderCheck < 2 then return end
+	lastShaderCheck = now
+	applyLook()
+end)
+
 local function label(frame, order, text, size, color, height)
 	local l = Instance.new("TextLabel")
 	l.LayoutOrder = order
@@ -2252,6 +2438,180 @@ local function buildGui()
 	credit.Text = "made by: FearVesta"
 	credit.Parent = content
 
+	-- ===== SIDE TABS + SHADERS PANEL =====
+	local scopeItems = {}
+	for _, c in ipairs(content:GetChildren()) do
+		if c:IsA("GuiObject") and c ~= header then
+			table.insert(scopeItems, c)
+		end
+	end
+
+	local shadersPanel = Instance.new("Frame")
+	shadersPanel.Name = "ShadersPanel"
+	shadersPanel.LayoutOrder = 50
+	shadersPanel.Size = UDim2.new(1, 0, 0, 0)
+	shadersPanel.AutomaticSize = Enum.AutomaticSize.Y
+	shadersPanel.BackgroundTransparency = 1
+	shadersPanel.Visible = false
+	shadersPanel.Parent = content
+	local panelList = Instance.new("UIListLayout")
+	panelList.Padding = UDim.new(0, 6)
+	panelList.SortOrder = Enum.SortOrder.LayoutOrder
+	panelList.Parent = shadersPanel
+
+	local function panelRow(rowOrder)
+		local row = Instance.new("Frame")
+		row.LayoutOrder = rowOrder
+		row.Size = UDim2.new(1, 0, 0, 30)
+		row.BackgroundTransparency = 1
+		row.Parent = shadersPanel
+		local rl = Instance.new("UIListLayout")
+		rl.FillDirection = Enum.FillDirection.Horizontal
+		rl.Padding = UDim.new(0, 6)
+		rl.SortOrder = Enum.SortOrder.LayoutOrder
+		rl.Parent = row
+		return row
+	end
+
+	local function panelLabel(rowOrder, text)
+		local l = label(shadersPanel, rowOrder, text, 14, Color3.new(1, 1, 1), 16)
+		l.Font = BUBBLY_FONT
+		l.TextXAlignment = Enum.TextXAlignment.Left
+		l.TextStrokeColor3 = Color3.new(0, 0, 0)
+		l.TextStrokeTransparency = 0.3
+		return l
+	end
+
+	panelLabel(1, "SHADERS")
+
+	local shToggleBg, shToggleBtn
+	do
+		local row = panelRow(2)
+		local bg, tb, holder = makeGlassButton(row, 1, "SHADERS: OFF", Color3.fromRGB(78, 80, 92), nil, function()
+			shaderOn = not shaderOn
+			applyShader()
+		end)
+		holder.Size = UDim2.new(1, 0, 1, 0)
+		shToggleBg, shToggleBtn = bg, tb
+	end
+
+	panelLabel(3, "STYLE")
+	local presetColors = {
+		Glossy = Color3.fromRGB(100, 140, 170),
+		Warm = Color3.fromRGB(190, 120, 80),
+		Cool = Color3.fromRGB(70, 110, 200),
+		Neon = Color3.fromRGB(150, 60, 200),
+	}
+	local presetBgs = {}
+	for r = 0, 1 do
+		local row = panelRow(4 + r)
+		for c = 1, 2 do
+			local name = SHADER_ORDER[r * 2 + c]
+			local bg, _, holder = makeGlassButton(row, c, string.upper(name), presetColors[name], nil, function()
+				shaderPreset = name
+				shaderOn = true
+				applyShader()
+			end)
+			holder.Size = UDim2.new(0.5, -3, 1, 0)
+			presetBgs[name] = bg
+		end
+	end
+
+	panelLabel(6, "GLOSS LEVEL")
+	local glossValue
+	do
+		local row = panelRow(7)
+		local _, _, minusHolder = makeGlassButton(row, 1, "-", Color3.fromRGB(84, 84, 100), nil, function()
+			glossLevel = math.max(1, glossLevel - 1)
+			if shaderOn then applyShader() elseif shaderUIRefresh then shaderUIRefresh() end
+		end)
+		minusHolder.Size = UDim2.new(0.25, -4, 1, 0)
+		glossValue = Instance.new("TextLabel")
+		glossValue.LayoutOrder = 2
+		glossValue.Size = UDim2.new(0.5, -4, 1, 0)
+		glossValue.BackgroundTransparency = 1
+		photoText(glossValue, 16)
+		glossValue.Text = glossLevel .. " / 5"
+		glossValue.Parent = row
+		local _, _, plusHolder = makeGlassButton(row, 3, "+", Color3.fromRGB(84, 84, 100), nil, function()
+			glossLevel = math.min(5, glossLevel + 1)
+			if shaderOn then applyShader() elseif shaderUIRefresh then shaderUIRefresh() end
+		end)
+		plusHolder.Size = UDim2.new(0.25, -4, 1, 0)
+	end
+
+	local shinyBg, shinyBtn
+	do
+		local row = panelRow(8)
+		local bg, tb, holder = makeGlassButton(row, 1, "SHINY SURFACES: ON", Color3.fromRGB(78, 80, 92), nil, function()
+			shinySurfaces = not shinySurfaces
+			if shaderOn then applyShader() elseif shaderUIRefresh then shaderUIRefresh() end
+		end)
+		holder.Size = UDim2.new(1, 0, 1, 0)
+		shinyBg, shinyBtn = bg, tb
+	end
+
+	local shNote = label(shadersPanel, 9, "Glossy = bloom glow + sharp reflections + shiny surfaces. Turn SHINY SURFACES off if it lags.", 11, Color3.fromRGB(150, 150, 170), 30)
+	shNote.TextXAlignment = Enum.TextXAlignment.Left
+	shNote.TextStrokeColor3 = Color3.new(0, 0, 0)
+	shNote.TextStrokeTransparency = 0.5
+
+	do
+		local row = panelRow(10)
+		local _, _, holder = makeGlassButton(row, 1, "TURN OFF SHADERS", Color3.fromRGB(84, 84, 100), nil, function()
+			shaderOn = false
+			applyShader()
+		end)
+		holder.Size = UDim2.new(1, 0, 1, 0)
+	end
+
+	shaderUIRefresh = function()
+		shToggleBtn.Text = shaderOn and "SHADERS: ON" or "SHADERS: OFF"
+		shToggleBg.BackgroundColor3 = shaderOn and Color3.fromRGB(0, 105, 190) or Color3.fromRGB(78, 80, 92)
+		for name, bg in pairs(presetBgs) do
+			local stroke = bg:FindFirstChildOfClass("UIStroke")
+			if stroke then
+				local on = shaderOn and shaderPreset == name
+				stroke.Color = on and BUTTON_SELECTED or BUTTON_OUTLINE
+				stroke.Thickness = on and 2.5 or 1
+				stroke.Transparency = on and 0 or 0.45
+			end
+		end
+		glossValue.Text = glossLevel .. " / 5"
+		shinyBtn.Text = shinySurfaces and "SHINY SURFACES: ON" or "SHINY SURFACES: OFF"
+		shinyBg.BackgroundColor3 = shinySurfaces and Color3.fromRGB(0, 105, 190) or Color3.fromRGB(78, 80, 92)
+	end
+	shaderUIRefresh()
+
+	-- side tabs (stuck to the right edge of the menu, they move with it)
+	local tabBgs = {}
+	local function setTab(name)
+		for _, item in ipairs(scopeItems) do
+			item.Visible = (name == "scopes")
+		end
+		shadersPanel.Visible = (name == "shaders")
+		for tabName, bg in pairs(tabBgs) do
+			local stroke = bg:FindFirstChildOfClass("UIStroke")
+			if stroke then
+				local on = (tabName == name)
+				stroke.Color = on and BUTTON_SELECTED or BUTTON_OUTLINE
+				stroke.Thickness = on and 2.5 or 1
+				stroke.Transparency = on and 0 or 0.45
+			end
+		end
+	end
+	local function makeTab(name, text, y)
+		local bg, _, holder = makeGlassButton(frame, 0, text, Color3.fromRGB(84, 84, 100), nil, function()
+			setTab(name)
+		end)
+		holder.Size = UDim2.new(0, 78, 0, 34)
+		holder.Position = UDim2.new(1, 4, 0, y)
+		tabBgs[name] = bg
+	end
+	makeTab("scopes", "SCOPES", 52)
+	makeTab("shaders", "SHADERS", 92)
+	setTab("scopes")
+
 	local confirm = Instance.new("Frame")
 	confirm.Name = "ConfirmClose"
 	confirm.Size = UDim2.new(1, 0, 1, 0)
@@ -2410,6 +2770,7 @@ env.VoidscopeRecolorCleanup = function()
 	for _, c in ipairs(conns) do
 		pcall(function() c:Disconnect() end)
 	end
+	pcall(removeShader)
 	restoreAll()
 	if gui then gui:Destroy() end
 	env.VoidscopeRecolorCleanup = nil
