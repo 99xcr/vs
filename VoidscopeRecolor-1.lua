@@ -31,6 +31,12 @@ local WHITE_INVERT = false
 -- BOMB EMOTE SETTINGS (Gold Bomb / Prank Bomb tabs)
 local BOMB_RADIUS = 100          -- studs from you within which a bomb that isn't in your character counts as yours
 local BOMB_RAINBOW_SPEED = 0.3   -- how fast the Rainbow bomb colour cycles
+-- Extra names to look for (copy the exact name you see in Dex). Spaces / _ / - and capitals are ignored.
+-- Example: prank = { "cartoonbomb", "jokebomb" }
+local BOMB_NAMES = { gold = {}, prank = {} }
+-- set to true, then use the emote: the F9 console prints every new object that appears near you,
+-- so you can read the bomb's real name and add it to BOMB_NAMES above
+local BOMB_DEBUG = false
 
 -- button shine for the special scopes (gold bands / icy diamond facets / ruby)
 local GOLD_SEQ = ColorSequence.new({
@@ -679,6 +685,19 @@ TEX_STYLES.white = function(stats)
 	end
 end
 end -- end of texture-style block
+
+-- BOMB SHADE: a grey copy of a texture (detail kept, colour removed). Tinting it with a colour recolours the
+-- bomb while the texture detail stays.
+TEX_STYLES.bombshade = function(stats)
+	local lo, hi = stats.q(0.03), stats.q(0.97)
+	local span = math.max(hi - lo, 0.05)
+	return function(lum)
+		local rel = (lum - lo) / span
+		if rel < 0 then rel = 0 elseif rel > 1 then rel = 1 end
+		local s = (0.28 + 0.72 * rel) * 255
+		return s, s, s
+	end
+end
 
 local PREBUILD_STYLES = { "rainbow", "gold", "diamond", "ruby", "pink", "white" }
 
@@ -1839,6 +1858,12 @@ end
 
 local function nameKind(name)
 	local n = norm(name)
+	for _, kind in ipairs(BOMB_KINDS) do
+		for _, w in ipairs(BOMB_NAMES[kind] or {}) do
+			local nw = norm(w)
+			if nw ~= "" and string.find(n, nw, 1, true) then return kind end
+		end
+	end
 	if string.find(n, "bomb", 1, true) then
 		if string.find(n, "prank", 1, true) then return "prank" end
 		if string.find(n, "gold", 1, true) then return "gold" end
@@ -1905,7 +1930,72 @@ local function guardBombEffect(inst, kind)
 	end)
 end
 
-local function paintBombInst(inst, entry, kind)
+local bombSA = setmetatable({}, { __mode = "k" })   -- part -> the SurfaceAppearance showing the shaded texture
+local bombTex = setmetatable({}, { __mode = "k" })  -- part -> its original texture id
+local bombWait = setmetatable({}, { __mode = "k" }) -- part -> waiting for its shade texture to finish building
+local paintBombInst
+
+local function ownAppearance(mp)
+	for _, c in ipairs(mp:GetChildren()) do
+		if c:IsA("SurfaceAppearance") and c.Name ~= "VSBombSurface" then return c end
+	end
+	return nil
+end
+
+-- keeps the texture: swaps it for a grey copy of itself (same detail) and tints that grey copy with the colour
+local function applyShade(mp, color, kind)
+	local own = ownAppearance(mp)
+	local tex = bombTex[mp]
+	if not tex then
+		if own then
+			pcall(function() tex = own.ColorMap end)
+		else
+			pcall(function() tex = mp.TextureID end)
+		end
+		if type(tex) ~= "string" or tex == "" then return false end
+		bombTex[mp] = tex
+	end
+	local entry = ensureTexture("bombshade", tex)
+	if not entry then return false end
+	if entry.state == "working" then
+		entry.waiters[{}] = true -- speeds the build up; a dummy key so nothing else gets repainted
+		if not bombWait[mp] then
+			bombWait[mp] = true
+			task.spawn(function()
+				local t0 = os.clock()
+				while entry.state == "working" and os.clock() - t0 < 90 do task.wait(0.1) end
+				bombWait[mp] = nil
+				local e = bombSel[kind]
+				if e and mp.Parent and entry.state == "done" then paintBombInst(mp, e, kind) end
+			end)
+		end
+		return false
+	end
+	if entry.state ~= "done" then return false end
+	local sa = own
+	if own then
+		bset(own, "ColorMapContent", Content.fromObject(entry.image))
+		bset(own, "Color", color)
+		bombTouched[kind][own] = true
+	else
+		sa = bombSA[mp]
+		if not (sa and sa.Parent) then
+			sa = Instance.new("SurfaceAppearance")
+			sa.Name = "VSBombSurface"
+			local okc = pcall(function() sa.ColorMapContent = Content.fromObject(entry.image) end)
+			if not okc then
+				pcall(function() sa:Destroy() end)
+				return false
+			end
+			sa.Parent = mp
+		end
+		sa.Color = color
+	end
+	bombSA[mp] = sa
+	return true
+end
+
+function paintBombInst(inst, entry, kind)
 	local rainbow = entry.texStyle == "rainbow" or entry.mode == "rainbow"
 	local color = entry.color
 	if inst:IsA("BasePart") then
@@ -1917,7 +2007,7 @@ local function paintBombInst(inst, entry, kind)
 			bombRainbow[inst] = nil
 		end
 		bset(inst, "Color", color)
-		if inst:IsA("MeshPart") then bset(inst, "TextureID", "") end -- flat colour = exact hue
+		if inst:IsA("MeshPart") then applyShade(inst, color, kind) end -- texture stays, colour changes
 		if entry.reflectance then bset(inst, "Reflectance", entry.reflectance) end
 		return true
 	elseif isEffect(inst) then
@@ -1927,13 +2017,10 @@ local function paintBombInst(inst, entry, kind)
 		return true
 	elseif inst:IsA("SpecialMesh") then
 		bombTouched[kind][inst] = true
-		bset(inst, "TextureId", "")
 		bset(inst, "VertexColor", Vector3.new(color.R, color.G, color.B))
 		return true
 	elseif inst:IsA("SurfaceAppearance") then
-		bombTouched[kind][inst] = true
-		bset(inst, "ColorMap", "")
-		bset(inst, "Color", color)
+		bombTouched[kind][inst] = true -- its MeshPart recolours it (keeping the texture)
 		return true
 	elseif inst:IsA("Decal") or inst:IsA("Texture") then
 		bombTouched[kind][inst] = true
@@ -1967,6 +2054,10 @@ end
 
 local function restoreBombInst(inst)
 	bombRainbow[inst] = nil
+	local sa = bombSA[inst]
+	if sa and sa.Name == "VSBombSurface" then pcall(function() sa:Destroy() end) end
+	bombSA[inst] = nil
+	bombTex[inst] = nil
 	local saved = bombOrig[inst]
 	if saved then
 		for prop, v in pairs(saved) do
@@ -1974,15 +2065,30 @@ local function restoreBombInst(inst)
 		end
 		bombOrig[inst] = nil
 	end
+	for _, c in ipairs(inst:GetChildren()) do
+		if c.Name == "VSBombSurface" then pcall(function() c:Destroy() end) end
+	end
 end
 
 function resetBomb(kind)
 	bombSel[kind] = nil
 	bombScan[kind] += 1 -- cancels any scan still running
+	local n = 0
 	for inst in pairs(bombTouched[kind]) do
-		restoreBombInst(inst)
+		pcall(restoreBombInst, inst)
+		n += 1
 	end
 	bombTouched[kind] = setmetatable({}, { __mode = "k" })
+	-- safety net: anything we saved an original for that still belongs to this bomb gets restored too
+	local extra = {}
+	for inst in pairs(bombOrig) do
+		if bombKindOf(inst) == kind then table.insert(extra, inst) end
+	end
+	for _, inst in ipairs(extra) do
+		pcall(restoreBombInst, inst)
+		n += 1
+	end
+	setNote("Reset " .. kind .. " bomb (" .. n .. " parts restored)")
 end
 
 local function isBombRoot(d, kind)
@@ -2030,6 +2136,18 @@ function applyBomb(kind, entry)
 end
 
 local function onBombAdded(d)
+	if BOMB_DEBUG then
+		task.defer(function()
+			local p = d.Parent
+			if not p then return end
+			local char = LocalPlayer.Character
+			if not (p == Workspace or p == char or p:IsA("Backpack")) then return end
+			local root = char and char:FindFirstChild("HumanoidRootPart")
+			local pos = anchorPos(d)
+			if p == Workspace and root and pos and (pos - root.Position).Magnitude > BOMB_RADIUS then return end
+			print("[Voidscope Recolor] new object: " .. d.ClassName .. "  " .. d:GetFullName())
+		end)
+	end
 	if not (bombSel.gold or bombSel.prank) then return end
 	task.defer(function()
 		if not d.Parent then return end
@@ -2057,7 +2175,10 @@ connect(RunService.Heartbeat, function()
 	lastBombSpin = now
 	for part, off in pairs(bombRainbow) do
 		if part.Parent then
-			pcall(function() part.Color = Color3.fromHSV((now * BOMB_RAINBOW_SPEED + off) % 1, 0.9, 1) end)
+			local c = Color3.fromHSV((now * BOMB_RAINBOW_SPEED + off) % 1, 0.9, 1)
+			pcall(function() part.Color = c end)
+			local sa = bombSA[part]
+			if sa and sa.Parent then pcall(function() sa.Color = c end) end
 		end
 	end
 end)
@@ -2676,8 +2797,8 @@ local function buildGui()
 		local row = featureRow(page, nextFn)
 		do
 			local _, _, holder = makeGlassButton(row, 1, "RESET " .. niceName, Color3.fromRGB(84, 84, 100), nil, function()
-				resetBomb(kind)
-				setNote("")
+				local okReset, errReset = pcall(resetBomb, kind)
+				if not okReset then setNote("Reset error: " .. tostring(errReset)) end
 				updateStatus()
 			end)
 			holder.Size = UDim2.new(1, 0, 1, 0)
