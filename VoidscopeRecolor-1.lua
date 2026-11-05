@@ -25,6 +25,13 @@ local BUDGET_WAITING = 0.03      -- if you click a style that isn't ready, it ge
 local PREBUILD_DELAY = 0         -- start building every style the moment the gun is found
 local MARBLE_SCALE = 1.6         -- Diamond / Ruby pattern size: higher = smaller, busier marbling, lower = bigger swirls
 
+-- WHITE SCOPE: if the black ends up on the wrong parts of the gun (body black, detail white), set this to true
+local WHITE_INVERT = false
+
+-- BOMB EMOTE SETTINGS (Gold Bomb / Prank Bomb tabs)
+local BOMB_RADIUS = 100          -- studs from you within which a bomb that isn't in your character counts as yours
+local BOMB_RAINBOW_SPEED = 0.3   -- how fast the Rainbow bomb colour cycles
+
 -- button shine for the special scopes (gold bands / icy diamond facets / ruby)
 local GOLD_SEQ = ColorSequence.new({
 	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 240, 160)),
@@ -59,6 +66,8 @@ local COLORS = {
 	{ name = "Cyan",       color = Color3.fromRGB(0, 255, 255) },
 	-- PINK: pastel pink body with the gun's detail painted white (editable image texture)
 	{ name = "Pink",       color = Color3.fromRGB(255, 190, 215), mode = "texture", texStyle = "pink" },
+	-- WHITE: pale white body with the gun's detail painted black (editable image texture)
+	{ name = "White",      color = Color3.fromRGB(238, 238, 244), mode = "texture", texStyle = "white" },
 	{ name = "Rainbow",    color = Color3.fromRGB(255, 60, 200), mode = "texture", texStyle = "rainbow", gradient = true, rainbowFx = true },
 	-- GOLD: polished shiny metal, marbled bands of light and deep gold, warm glints
 	{ name = "Gold",       color = Color3.fromRGB(255, 200, 40), mode = "texture", texStyle = "gold", reflectance = 0.45,
@@ -108,7 +117,7 @@ KPYm3XP556w1GfgOUMY+FAUsDwaciEIaWwLGYWvBNha87GsQbkhw1Agl5RHZGojlNNqmbazBBxxK0t65
 jZwjAHFeINUyuBHxxnuLkKRs950d/MmH2tdtas0CznDRhmKm9Is2Di7FuRKgvbl32iUaak5QCcP26sAwMTajk8wt0xRhKee7HTJh
 DgZeCyimzUf2z49d2D+lQRzj3MPdZnuiNwtoxfUj0Z7fe0kFd2TfScUxepWzpr8TDx/f5QvlICzJxSs/9rN2/oWjQd3ntfklq6//
 y+wDfyoAjfPNhaHdztcTACG1fff54xcjz//10P48W3rC/9mSBLB6dXddNVSLCuQn2DetDYVWKto7f6pp487vvPzE5Ycl2HbS+ZZ/
-4ScLu7UBMmz5FxdWBLl5pGNN9eTJR5uBkmC6He47Jh2oQG/i3GkAnWvqhVc7a8A8Me2cBbQ1V563218Jp/ozI3/2+ytIyfALWPPV
+4U8Lu7UBMmz5FxdWBLl5pGNN9eTJR5uBkmC6He47Jh2oQG/i3GkAnWvqhVc7a8A8Me2cBbQ1V563218Jp/ozI3/2+ytIyfALWPPV
 t45X5xYVomYyQ5wlI2np/ln6W9fS60bdvu66h+784Cfz3RSOPfRmun19fX0dQy979On3f5pv70t1Vz4xr8Tt0lHKu+uy73X/i/X1
 X5t1sV6pNe+0fKiCz42x70rw08ZY5Z12FinWjqHrrUCjbazXbtyfaC/o86lAmAZIpZQStdTYoP8VaWtX90XPRa20QrHgd16VQtau
 Dv0w/EB3nUZ2x/lDS589arXBWlMN/rpmpDcyZtDIeIc3NIMQSmDtjlXv8SVAUZ40Zf6fs3V8Bze8rbx8BFEvWFg7baKWUnv3POMF
@@ -560,6 +569,10 @@ local RUBY_R, RUBY_G, RUBY_B = buildRamp({
 local PINK_R, PINK_G, PINK_B = buildRamp({
 	{ 244, 160, 196 }, { 255, 184, 212 }, { 255, 208, 228 }, { 255, 235, 244 }, { 255, 255, 255 },
 })
+-- WHITE: the gun's body = pale white, the gun's detail / bright parts go down to black
+local WHITE_R, WHITE_G, WHITE_B = buildRamp({
+	{ 238, 238, 244 }, { 236, 236, 242 }, { 226, 226, 232 }, { 150, 150, 158 }, { 45, 45, 50 }, { 6, 6, 8 },
+})
 
 -- soft marble swirl 0..1, shared by gold / diamond / ruby
 local function marble(u, v, scale)
@@ -648,7 +661,23 @@ TEX_STYLES.pink = function(stats)
 	end
 end
 
-local PREBUILD_STYLES = { "rainbow", "gold", "diamond", "ruby", "pink" }
+-- WHITE: pale white body, the gun's detail (the bright parts of its texture) painted black
+TEX_STYLES.white = function(stats)
+	local lo, hi = stats.q(0.05), stats.q(0.95)
+	local span = math.max(hi - lo, 0.05)
+	local floor = math.floor
+	return function(lum)
+		local rel = (lum - lo) / span
+		if rel < 0 then rel = 0 elseif rel > 1 then rel = 1 end
+		if WHITE_INVERT then rel = 1 - rel end
+		-- curve keeps the body pale and only lets real detail drop to black
+		local t = rel ^ 2.5
+		local k = floor(t * 255) + 1
+		return WHITE_R[k], WHITE_G[k], WHITE_B[k]
+	end
+end
+
+local PREBUILD_STYLES = { "rainbow", "gold", "diamond", "ruby", "pink", "white" }
 
 local function percentileOf(hist, total, p)
 	if total == 0 then return p end
@@ -1764,6 +1793,285 @@ connect(Workspace.DescendantAdded, function(d)
 	end)
 end)
 
+---------------------------------------------------------------------
+-- BOMB EMOTES (Gold Bomb / Prank Bomb tabs)
+-- Finds anything named like "GoldBomb" / "Gold Bomb" / "Prank_Bomb" (and anything inside it),
+-- in your character, your backpack, or near you in the workspace, and recolours it with a flat colour.
+-- Bombs that appear later (when you use the emote) are recoloured the moment they spawn.
+-- Uses its own save-slot so resetting the scope never touches the bombs and vice versa.
+---------------------------------------------------------------------
+local BOMB_KINDS = { "gold", "prank" }
+local bombSel = {}                                   -- kind -> selected COLORS entry
+local bombTouched = {
+	gold = setmetatable({}, { __mode = "k" }),
+	prank = setmetatable({}, { __mode = "k" }),
+}
+local bombButtons = { gold = {}, prank = {} }        -- kind -> { colour name -> button background }
+local bombOrig = setmetatable({}, { __mode = "k" })  -- inst -> { prop = original value }
+local bombRainbow = setmetatable({}, { __mode = "k" }) -- part -> hue offset (Rainbow bomb)
+local bombGuarded = setmetatable({}, { __mode = "k" })
+local bombOwn = setmetatable({}, { __mode = "k" })   -- roots we already decided are yours
+local bombScan = { gold = 0, prank = 0 }
+local lastBombSpin = 0
+
+local function bset(inst, prop, value)
+	local saved = bombOrig[inst]
+	if not saved then
+		saved = {}
+		bombOrig[inst] = saved
+	end
+	if saved[prop] == nil then
+		local ok, v = pcall(function() return inst[prop] end)
+		if ok then saved[prop] = v end
+	end
+	return (pcall(function() inst[prop] = value end))
+end
+
+local function norm(s)
+	return string.lower((string.gsub(s, "[%s_%-]", "")))
+end
+
+local function nameKind(name)
+	local n = norm(name)
+	if string.find(n, "bomb", 1, true) then
+		if string.find(n, "prank", 1, true) then return "prank" end
+		if string.find(n, "gold", 1, true) then return "gold" end
+	end
+	return nil
+end
+
+local function isHumanoidModel(inst)
+	return inst:IsA("Model") and inst:FindFirstChildOfClass("Humanoid") ~= nil
+end
+
+-- walks up from inst looking for a "gold bomb" / "prank bomb" named parent (never tests a player's own character name)
+local function bombKindOf(inst)
+	local cur, depth = inst, 0
+	while cur and cur ~= Workspace and cur ~= game and depth < 14 do
+		if isHumanoidModel(cur) then return nil end
+		local k = nameKind(cur.Name)
+		if k then return k, cur end
+		cur = cur.Parent
+		depth += 1
+	end
+	return nil
+end
+
+local function anchorPos(root)
+	local ok, pos = pcall(function() return root:GetPivot().Position end)
+	if ok and pos then return pos end
+	local p = root:FindFirstChildWhichIsA("BasePart", true)
+	return p and p.Position or nil
+end
+
+local function bombIsYours(root)
+	if bombOwn[root] then return true end
+	local char = LocalPlayer.Character
+	local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
+	local mine = (char and root:IsDescendantOf(char)) or (bp and root:IsDescendantOf(bp)) or root:IsDescendantOf(LocalPlayer)
+	if not mine then
+		local other = characterOf(root)
+		if other and other ~= char then return false end
+		local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+		local pos = anchorPos(root)
+		if rootPart and pos and (pos - rootPart.Position).Magnitude > BOMB_RADIUS then return false end
+	end
+	bombOwn[root] = true
+	return true
+end
+
+local function bombWantSeq(entry)
+	if entry.texStyle == "rainbow" or entry.mode == "rainbow" then return RAINBOW_SEQUENCE end
+	return entry.effectSeq or ColorSequence.new(entry.color)
+end
+
+local function guardBombEffect(inst, kind)
+	if bombGuarded[inst] then return end
+	bombGuarded[inst] = true
+	connect(inst:GetPropertyChangedSignal("Color"), function()
+		local e = bombSel[kind]
+		if not e then return end
+		local want = bombWantSeq(e)
+		local cur = inst.Color
+		if #cur.Keypoints ~= #want.Keypoints or not colorsClose(cur.Keypoints[1].Value, want.Keypoints[1].Value) then
+			bset(inst, "Color", want)
+		end
+	end)
+end
+
+local function paintBombInst(inst, entry, kind)
+	local rainbow = entry.texStyle == "rainbow" or entry.mode == "rainbow"
+	local color = entry.color
+	if inst:IsA("BasePart") then
+		bombTouched[kind][inst] = true
+		if rainbow then
+			bombRainbow[inst] = bombRainbow[inst] or math.random()
+			color = Color3.fromHSV((os.clock() * BOMB_RAINBOW_SPEED + bombRainbow[inst]) % 1, 0.9, 1)
+		else
+			bombRainbow[inst] = nil
+		end
+		bset(inst, "Color", color)
+		if inst:IsA("MeshPart") then bset(inst, "TextureID", "") end -- flat colour = exact hue
+		if entry.reflectance then bset(inst, "Reflectance", entry.reflectance) end
+		return true
+	elseif isEffect(inst) then
+		bombTouched[kind][inst] = true
+		bset(inst, "Color", bombWantSeq(entry))
+		guardBombEffect(inst, kind)
+		return true
+	elseif inst:IsA("SpecialMesh") then
+		bombTouched[kind][inst] = true
+		bset(inst, "TextureId", "")
+		bset(inst, "VertexColor", Vector3.new(color.R, color.G, color.B))
+		return true
+	elseif inst:IsA("SurfaceAppearance") then
+		bombTouched[kind][inst] = true
+		bset(inst, "ColorMap", "")
+		bset(inst, "Color", color)
+		return true
+	elseif inst:IsA("Decal") or inst:IsA("Texture") then
+		bombTouched[kind][inst] = true
+		bset(inst, "Color3", color)
+		return true
+	elseif inst:IsA("Light") then
+		bombTouched[kind][inst] = true
+		bset(inst, "Color", color)
+		return true
+	elseif inst:IsA("Fire") then
+		bombTouched[kind][inst] = true
+		bset(inst, "Color", color)
+		bset(inst, "SecondaryColor", color)
+		return true
+	elseif inst:IsA("Smoke") then
+		bombTouched[kind][inst] = true
+		bset(inst, "Color", color)
+		return true
+	elseif inst:IsA("Sparkles") then
+		bombTouched[kind][inst] = true
+		bset(inst, "SparkleColor", color)
+		return true
+	elseif inst:IsA("Highlight") then
+		bombTouched[kind][inst] = true
+		bset(inst, "FillColor", color)
+		bset(inst, "OutlineColor", color)
+		return true
+	end
+	return false
+end
+
+local function restoreBombInst(inst)
+	bombRainbow[inst] = nil
+	local saved = bombOrig[inst]
+	if saved then
+		for prop, v in pairs(saved) do
+			pcall(function() inst[prop] = v end)
+		end
+		bombOrig[inst] = nil
+	end
+end
+
+local function resetBomb(kind)
+	bombSel[kind] = nil
+	bombScan[kind] += 1 -- cancels any scan still running
+	for inst in pairs(bombTouched[kind]) do
+		restoreBombInst(inst)
+	end
+	bombTouched[kind] = setmetatable({}, { __mode = "k" })
+end
+
+local function isBombRoot(d, kind)
+	return nameKind(d.Name) == kind and not isHumanoidModel(d)
+end
+
+local function scanBomb(kind, entry)
+	bombScan[kind] += 1
+	local token = bombScan[kind]
+	task.spawn(function()
+		local done, found, n = {}, 0, 0
+		local function handle(root)
+			if done[root] then return end
+			done[root] = true
+			if not bombIsYours(root) then return end
+			found += 1
+			paintBombInst(root, entry, kind)
+			for _, d in ipairs(root:GetDescendants()) do
+				paintBombInst(d, entry, kind)
+			end
+		end
+		local containers = { Workspace }
+		local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
+		if bp then table.insert(containers, bp) end
+		for _, container in ipairs(containers) do
+			for _, d in ipairs(container:GetDescendants()) do
+				if bombScan[kind] ~= token then return end
+				n += 1
+				if n % 2500 == 0 then task.wait() end
+				if isBombRoot(d, kind) then handle(d) end
+			end
+		end
+		if bombScan[kind] ~= token then return end
+		if found == 0 then
+			setNote("No " .. kind .. " bomb seen yet. It recolours when you use the emote.")
+		else
+			setNote("")
+		end
+	end)
+end
+
+local function applyBomb(kind, entry)
+	bombSel[kind] = entry
+	scanBomb(kind, entry)
+end
+
+local function onBombAdded(d)
+	if not (bombSel.gold or bombSel.prank) then return end
+	task.defer(function()
+		if not d.Parent then return end
+		local kind, root = bombKindOf(d)
+		local e = kind and bombSel[kind]
+		if not e then return end
+		if not bombIsYours(root) then return end
+		paintBombInst(d, e, kind)
+	end)
+end
+
+connect(Workspace.DescendantAdded, onBombAdded)
+do
+	local function hookBackpack(bp)
+		if bp and bp:IsA("Backpack") then connect(bp.DescendantAdded, onBombAdded) end
+	end
+	hookBackpack(LocalPlayer:FindFirstChildOfClass("Backpack"))
+	connect(LocalPlayer.ChildAdded, hookBackpack)
+end
+
+connect(RunService.Heartbeat, function()
+	if not next(bombRainbow) then return end
+	local now = os.clock()
+	if now - lastBombSpin < 0.08 then return end
+	lastBombSpin = now
+	for part, off in pairs(bombRainbow) do
+		if part.Parent then
+			pcall(function() part.Color = Color3.fromHSV((now * BOMB_RAINBOW_SPEED + off) % 1, 0.9, 1) end)
+		end
+	end
+end)
+
+---------------------------------------------------------------------
+-- HEX PARSER (used by the hex colour picker on the Scopes tab)
+---------------------------------------------------------------------
+local function parseHex(s)
+	s = string.gsub(s or "", "[#%s]", "")
+	s = string.gsub(s, "^0[xX]", "")
+	if #s == 3 then
+		s = string.sub(s, 1, 1) .. string.sub(s, 1, 1) .. string.sub(s, 2, 2) .. string.sub(s, 2, 2)
+			.. string.sub(s, 3, 3) .. string.sub(s, 3, 3)
+	end
+	if #s ~= 6 or string.find(s, "%X") then return nil end
+	local n = tonumber(s, 16)
+	if not n then return nil end
+	return Color3.fromRGB(math.floor(n / 65536) % 256, math.floor(n / 256) % 256, n % 256)
+end
+
 local function updateStatus()
 	if glassToggleBtn then
 		glassToggleBtn.Text = glassOverlay and "SEE-THROUGH: ON" or "SEE-THROUGH: OFF"
@@ -1787,6 +2095,17 @@ local function updateStatus()
 			stroke.Color = on and BUTTON_SELECTED or BUTTON_OUTLINE
 			stroke.Thickness = on and 2.5 or 1
 			stroke.Transparency = on and 0 or 0.45
+		end
+	end
+	for _, kind in ipairs(BOMB_KINDS) do
+		for name, bg in pairs(bombButtons[kind]) do
+			local stroke = bg:FindFirstChildOfClass("UIStroke")
+			if stroke then
+				local on = (bombSel[kind] ~= nil and bombSel[kind].name == name)
+				stroke.Color = on and BUTTON_SELECTED or BUTTON_OUTLINE
+				stroke.Thickness = on and 2.5 or 1
+				stroke.Transparency = on and 0 or 0.45
+			end
 		end
 	end
 end
@@ -1896,7 +2215,8 @@ local function buildGui()
 		gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 	end
 
-	local WIDTH = 290
+	local WIDTH = 290   -- width of the page area
+	local TABW = 88     -- width of the side tab column on the left
 
 	local function photoText(b, size)
 		b.Font = BUBBLY_FONT
@@ -1993,7 +2313,7 @@ local function buildGui()
 
 	local frame = Instance.new("Frame")
 	frame.Name = "Main"
-	frame.Size = UDim2.new(0, WIDTH, 0, 400)
+	frame.Size = UDim2.new(0, WIDTH + TABW, 0, 400)
 	frame.Position = UDim2.new(0, 20, 0.15, 0)
 	frame.BackgroundColor3 = Color3.new(1, 1, 1)
 	frame.BackgroundTransparency = 0
@@ -2030,9 +2350,36 @@ local function buildGui()
 	})
 	glossGradient.Parent = gloss
 
+	-- LEFT SIDE TABS
+	local sidebar = Instance.new("Frame")
+	sidebar.Name = "Tabs"
+	sidebar.Position = UDim2.new(0, 8, 0, 10)
+	sidebar.Size = UDim2.new(0, TABW - 14, 1, -20)
+	sidebar.BackgroundColor3 = Color3.new(0, 0, 0)
+	sidebar.BackgroundTransparency = 0.3
+	sidebar.BorderSizePixel = 0
+	sidebar.ZIndex = 2
+	sidebar.Parent = frame
+	Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 12)
+	local sideStroke = Instance.new("UIStroke")
+	sideStroke.Color = BUTTON_OUTLINE
+	sideStroke.Thickness = 1
+	sideStroke.Transparency = 0.5
+	sideStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	sideStroke.Parent = sidebar
+	local sidePad = Instance.new("UIPadding", sidebar)
+	sidePad.PaddingTop = UDim.new(0, 6)
+	sidePad.PaddingBottom = UDim.new(0, 6)
+	sidePad.PaddingLeft = UDim.new(0, 5)
+	sidePad.PaddingRight = UDim.new(0, 5)
+	local sideList = Instance.new("UIListLayout", sidebar)
+	sideList.Padding = UDim.new(0, 6)
+	sideList.SortOrder = Enum.SortOrder.LayoutOrder
+
 	local content = Instance.new("Frame")
 	content.Name = "Content"
-	content.Size = UDim2.new(1, 0, 0, 0)
+	content.Position = UDim2.new(0, TABW, 0, 0)
+	content.Size = UDim2.new(0, WIDTH, 0, 0)
 	content.AutomaticSize = Enum.AutomaticSize.Y
 	content.BackgroundTransparency = 1
 	content.ZIndex = 2
@@ -2047,7 +2394,7 @@ local function buildGui()
 	list.SortOrder = Enum.SortOrder.LayoutOrder
 
 	local function syncHeight()
-		frame.Size = UDim2.new(0, WIDTH, 0, math.max(content.AbsoluteSize.Y, 40))
+		frame.Size = UDim2.new(0, WIDTH + TABW, 0, math.max(content.AbsoluteSize.Y, 200))
 	end
 	connect(content:GetPropertyChangedSignal("AbsoluteSize"), syncHeight)
 	task.defer(syncHeight)
@@ -2103,12 +2450,34 @@ local function buildGui()
 	local minBtn = headerButton("-", -34, Color3.fromRGB(38, 40, 54))
 	local closeBtn = headerButton("X", 0, Color3.fromRGB(125, 30, 30))
 
-	local function featureRow()
+	-- PAGES (one per side tab, only one is visible at a time)
+	local pages = {}
+	local function newPage(name)
+		local page = Instance.new("Frame")
+		page.Name = name
+		page.LayoutOrder = nextOrder()
+		page.Size = UDim2.new(1, 0, 0, 0)
+		page.AutomaticSize = Enum.AutomaticSize.Y
+		page.BackgroundTransparency = 1
+		page.Visible = false
+		page.Parent = content
+		local pl = Instance.new("UIListLayout", page)
+		pl.Padding = UDim.new(0, 6)
+		pl.SortOrder = Enum.SortOrder.LayoutOrder
+		local n = 0
+		pages[name] = page
+		return page, function()
+			n += 1
+			return n
+		end
+	end
+
+	local function featureRow(page, nextFn)
 		local row = Instance.new("Frame")
-		row.LayoutOrder = nextOrder()
+		row.LayoutOrder = nextFn()
 		row.Size = UDim2.new(1, 0, 0, 30)
 		row.BackgroundTransparency = 1
-		row.Parent = content
+		row.Parent = page
 		local rl = Instance.new("UIListLayout")
 		rl.FillDirection = Enum.FillDirection.Horizontal
 		rl.Padding = UDim.new(0, 6)
@@ -2116,7 +2485,62 @@ local function buildGui()
 		rl.Parent = row
 		return row
 	end
-	local row1 = featureRow()
+
+	local function sectionLabel(page, nextFn, text)
+		local l = label(page, nextFn(), text, 14, Color3.new(1, 1, 1), 16)
+		l.Font = BUBBLY_FONT
+		l.TextXAlignment = Enum.TextXAlignment.Left
+		l.TextStrokeColor3 = Color3.new(0, 0, 0)
+		l.TextStrokeTransparency = 0.3
+		return l
+	end
+
+	-- scrolling list of every colour; suffix = "SCOPE" or "BOMB", store = table that remembers each button
+	local function colorScroll(page, nextFn, suffix, onPick, store)
+		local scroll = Instance.new("ScrollingFrame")
+		scroll.Name = "Colours"
+		scroll.LayoutOrder = nextFn()
+		scroll.Size = UDim2.new(1, 0, 0, 175)
+		scroll.BackgroundColor3 = Color3.new(0, 0, 0)
+		scroll.BackgroundTransparency = 0.3
+		scroll.BorderSizePixel = 0
+		scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+		scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+		scroll.ScrollBarThickness = 4
+		scroll.ScrollBarImageColor3 = Color3.fromRGB(150, 154, 170)
+		scroll.Parent = page
+		Instance.new("UICorner", scroll).CornerRadius = UDim.new(0, 10)
+		local scrollStroke = Instance.new("UIStroke")
+		scrollStroke.Color = BUTTON_OUTLINE
+		scrollStroke.Thickness = 1
+		scrollStroke.Transparency = 0.5
+		scrollStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		scrollStroke.Parent = scroll
+		local scrollPad = Instance.new("UIPadding", scroll)
+		scrollPad.PaddingTop = UDim.new(0, 6)
+		scrollPad.PaddingBottom = UDim.new(0, 6)
+		scrollPad.PaddingLeft = UDim.new(0, 6)
+		scrollPad.PaddingRight = UDim.new(0, 10)
+		local scrollList = Instance.new("UIListLayout", scroll)
+		scrollList.Padding = UDim.new(0, 6)
+		scrollList.SortOrder = Enum.SortOrder.LayoutOrder
+
+		for i, entry in ipairs(COLORS) do
+			local shown = colorsClose(entry.color, Color3.new(0, 0, 0)) and Color3.fromRGB(40, 40, 46) or entry.color
+			local grad = entry.btnGradient or (entry.gradient and RAINBOW_SEQUENCE) or nil
+			local bg, _, holder = makeGlassButton(scroll, i, string.upper(entry.name) .. suffix, shown, grad,
+				function() onPick(entry) end)
+			holder.Size = UDim2.new(1, 0, 0, 34)
+			store[entry.name] = bg
+		end
+		return scroll
+	end
+
+	-- PAGE 1: SCOPES (the original menu)
+	local scopesPage, scopesNext = newPage("scopes")
+
+	local row1 = featureRow(scopesPage, scopesNext)
 	glassToggleBg, glassToggleBtn = (function()
 		local bg, tb, holder = makeGlassButton(row1, 1, "SEE-THROUGH: OFF", Color3.fromRGB(78, 80, 92), nil, function()
 			glassOverlay = not glassOverlay
@@ -2144,7 +2568,7 @@ local function buildGui()
 		return bg, tb
 	end)()
 
-	local row2 = featureRow()
+	local row2 = featureRow(scopesPage, scopesNext)
 	do
 		local bg, _, holder = makeGlassButton(row2, 1, string.upper(GLASS.name), Color3.fromRGB(100, 140, 170), nil,
 			function() applyColor(GLASS) end, 0.15)
@@ -2156,56 +2580,111 @@ local function buildGui()
 		buttons[RAINBOW.name] = bg2
 	end
 
-	local row3 = featureRow()
+	local row3 = featureRow(scopesPage, scopesNext)
 	do
 		local _, _, holder = makeGlassButton(row3, 1, "RESET TO DEFAULT", Color3.fromRGB(84, 84, 100), nil, resetColor)
 		holder.Size = UDim2.new(1, 0, 1, 0)
 	end
 
-	local scopesLabel = label(content, nextOrder(), "SCOPES", 14, Color3.new(1, 1, 1), 16)
-	scopesLabel.Font = BUBBLY_FONT
-	scopesLabel.TextXAlignment = Enum.TextXAlignment.Left
-	scopesLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-	scopesLabel.TextStrokeTransparency = 0.3
+	sectionLabel(scopesPage, scopesNext, "SCOPES")
+	colorScroll(scopesPage, scopesNext, "SCOPE", applyColor, buttons)
 
-	local scroll = Instance.new("ScrollingFrame")
-	scroll.Name = "Scopes"
-	scroll.LayoutOrder = nextOrder()
-	scroll.Size = UDim2.new(1, 0, 0, 175)
-	scroll.BackgroundColor3 = Color3.new(0, 0, 0)
-	scroll.BackgroundTransparency = 0.3
-	scroll.BorderSizePixel = 0
-	scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	scroll.ScrollingDirection = Enum.ScrollingDirection.Y
-	scroll.ScrollBarThickness = 4
-	scroll.ScrollBarImageColor3 = Color3.fromRGB(150, 154, 170)
-	scroll.Parent = content
-	Instance.new("UICorner", scroll).CornerRadius = UDim.new(0, 10)
-	local scrollStroke = Instance.new("UIStroke")
-	scrollStroke.Color = BUTTON_OUTLINE
-	scrollStroke.Thickness = 1
-	scrollStroke.Transparency = 0.5
-	scrollStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	scrollStroke.Parent = scroll
-	local scrollPad = Instance.new("UIPadding", scroll)
-	scrollPad.PaddingTop = UDim.new(0, 6)
-	scrollPad.PaddingBottom = UDim.new(0, 6)
-	scrollPad.PaddingLeft = UDim.new(0, 6)
-	scrollPad.PaddingRight = UDim.new(0, 10)
-	local scrollList = Instance.new("UIListLayout", scroll)
-	scrollList.Padding = UDim.new(0, 6)
-	scrollList.SortOrder = Enum.SortOrder.LayoutOrder
+	-- HEX COLOUR PICKER (bottom of the main menu)
+	sectionLabel(scopesPage, scopesNext, "HEX COLOUR")
+	local hexRow = Instance.new("Frame")
+	hexRow.LayoutOrder = scopesNext()
+	hexRow.Size = UDim2.new(1, 0, 0, 30)
+	hexRow.BackgroundTransparency = 1
+	hexRow.Parent = scopesPage
+	local hexList = Instance.new("UIListLayout")
+	hexList.FillDirection = Enum.FillDirection.Horizontal
+	hexList.Padding = UDim.new(0, 6)
+	hexList.SortOrder = Enum.SortOrder.LayoutOrder
+	hexList.Parent = hexRow
 
-	for i, entry in ipairs(COLORS) do
-		local shown = colorsClose(entry.color, Color3.new(0, 0, 0)) and Color3.fromRGB(40, 40, 46) or entry.color
-		local grad = entry.btnGradient or (entry.gradient and RAINBOW_SEQUENCE) or nil
-		local bg, _, holder = makeGlassButton(scroll, i, string.upper(entry.name) .. "SCOPE", shown, grad,
-			function() applyColor(entry) end)
-		holder.Size = UDim2.new(1, 0, 0, 34)
-		buttons[entry.name] = bg
+	local swatch = Instance.new("Frame")
+	swatch.LayoutOrder = 1
+	swatch.Size = UDim2.new(0, 30, 1, 0)
+	swatch.BackgroundColor3 = Color3.new(1, 1, 1)
+	swatch.BorderSizePixel = 0
+	swatch.Parent = hexRow
+	Instance.new("UICorner", swatch).CornerRadius = UDim.new(0, 8)
+	local swatchStroke = Instance.new("UIStroke")
+	swatchStroke.Color = BUTTON_OUTLINE
+	swatchStroke.Thickness = 1
+	swatchStroke.Transparency = 0.3
+	swatchStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	swatchStroke.Parent = swatch
+
+	local hexBox = Instance.new("TextBox")
+	hexBox.LayoutOrder = 2
+	hexBox.Size = UDim2.new(1, -112, 1, 0)
+	hexBox.BackgroundColor3 = Color3.fromRGB(20, 21, 28)
+	hexBox.BackgroundTransparency = 0.1
+	hexBox.BorderSizePixel = 0
+	hexBox.ClearTextOnFocus = false
+	hexBox.PlaceholderText = "#FF8800"
+	hexBox.PlaceholderColor3 = Color3.fromRGB(130, 132, 148)
+	hexBox.Text = ""
+	hexBox.Font = BUBBLY_FONT
+	hexBox.TextSize = 14
+	hexBox.TextColor3 = Color3.new(1, 1, 1)
+	hexBox.TextXAlignment = Enum.TextXAlignment.Left
+	hexBox.Parent = hexRow
+	Instance.new("UICorner", hexBox).CornerRadius = UDim.new(0, 8)
+	local hexPad = Instance.new("UIPadding", hexBox)
+	hexPad.PaddingLeft = UDim.new(0, 8)
+	local hexStroke = Instance.new("UIStroke")
+	hexStroke.Color = BUTTON_OUTLINE
+	hexStroke.Thickness = 1
+	hexStroke.Transparency = 0.45
+	hexStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	hexStroke.Parent = hexBox
+
+	local function applyHex()
+		local c = parseHex(hexBox.Text)
+		if not c then
+			setNote("Invalid hex, use something like #FF8800")
+			return
+		end
+		swatch.BackgroundColor3 = c
+		setNote("")
+		applyColor({ name = "Custom", color = c })
+	end
+	hexBox:GetPropertyChangedSignal("Text"):Connect(function()
+		local c = parseHex(hexBox.Text)
+		if c then swatch.BackgroundColor3 = c end
+	end)
+	hexBox.FocusLost:Connect(function(enterPressed)
+		if enterPressed then applyHex() end
+	end)
+	do
+		local _, _, holder = makeGlassButton(hexRow, 3, "APPLY", Color3.fromRGB(0, 105, 190), nil, applyHex)
+		holder.Size = UDim2.new(0, 70, 1, 0)
 	end
 
+	-- PAGES 2 + 3: GOLD BOMB / PRANK BOMB
+	local function buildBombPage(kind, pageName, niceName)
+		local page, nextFn = newPage(pageName)
+		local row = featureRow(page, nextFn)
+		do
+			local _, _, holder = makeGlassButton(row, 1, "RESET " .. niceName, Color3.fromRGB(84, 84, 100), nil, function()
+				resetBomb(kind)
+				setNote("")
+				updateStatus()
+			end)
+			holder.Size = UDim2.new(1, 0, 1, 0)
+		end
+		sectionLabel(page, nextFn, niceName .. " EMOTE")
+		colorScroll(page, nextFn, "BOMB", function(entry)
+			applyBomb(kind, entry)
+			updateStatus()
+		end, bombButtons[kind])
+	end
+	buildBombPage("gold", "gold", "GOLD BOMB")
+	buildBombPage("prank", "prank", "PRANK BOMB")
+
+	-- shared note + footer + credit (below whichever page is showing)
 	noteLabel = label(content, nextOrder(), "", 11, Color3.fromRGB(150, 150, 170), 14)
 	noteLabel.TextXAlignment = Enum.TextXAlignment.Left
 	noteLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
@@ -2251,6 +2730,39 @@ local function buildGui()
 	credit.TextStrokeTransparency = 0.3
 	credit.Text = "made by: FearVesta"
 	credit.Parent = content
+
+	-- SIDE TAB BUTTONS
+	local tabBgs = {}
+	local function showTab(name)
+		for key, page in pairs(pages) do
+			page.Visible = (key == name)
+		end
+		for key, bg in pairs(tabBgs) do
+			local stroke = bg:FindFirstChildOfClass("UIStroke")
+			local on = (key == name)
+			if stroke then
+				stroke.Color = on and BUTTON_SELECTED or BUTTON_OUTLINE
+				stroke.Thickness = on and 2.5 or 1
+				stroke.Transparency = on and 0 or 0.45
+			end
+		end
+		setNote("")
+	end
+	local tabDefs = {
+		{ "scopes", "SCOPES" },
+		{ "gold", "GOLD BOMB" },
+		{ "prank", "PRANK BOMB" },
+	}
+	for i, def in ipairs(tabDefs) do
+		local key = def[1]
+		local bg, tb, holder = makeGlassButton(sidebar, i, def[2], Color3.fromRGB(84, 84, 100), nil, function()
+			showTab(key)
+		end)
+		holder.Size = UDim2.new(1, 0, 0, 44)
+		tb.TextWrapped = true
+		tabBgs[key] = bg
+	end
+	showTab("scopes")
 
 	local confirm = Instance.new("Frame")
 	confirm.Name = "ConfirmClose"
@@ -2409,6 +2921,9 @@ end
 env.VoidscopeRecolorCleanup = function()
 	for _, c in ipairs(conns) do
 		pcall(function() c:Disconnect() end)
+	end
+	for _, kind in ipairs(BOMB_KINDS) do
+		pcall(resetBomb, kind)
 	end
 	restoreAll()
 	if gui then gui:Destroy() end
