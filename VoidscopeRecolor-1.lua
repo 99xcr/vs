@@ -19,12 +19,12 @@ local TRAIL_WIDTH = 0.4      -- how thick the trail is at the tip (studs)
 local TRAIL_FLIP = false     -- if the trail comes off the wrong end of the gun, set this to true
 
 -- EDITABLE IMAGE SPEED SETTINGS
-local MAX_TEX = 384          -- textures bigger than this are shrunk before editing (lower = faster, 256 = very fast, 512 = sharpest)
-local BUDGET_BACKGROUND = 0.003  -- seconds of each frame used while quietly pre-building textures
-local BUDGET_WAITING = 0.012     -- seconds of each frame used when YOU are waiting on a texture
-local PREBUILD_DELAY = 2         -- seconds after the gun is found before pre-building every texture style
+local MAX_TEX = 512              -- sharper; built once in the background so it doesn't hurt switching (384 = lighter)
+local BUDGET_BACKGROUND = 0.006  -- seconds of each frame used while quietly pre-building textures
+local BUDGET_WAITING = 0.03      -- if you click a style that isn't ready, it gets most of the frame
+local PREBUILD_DELAY = 0         -- start building every style the moment the gun is found
 
--- button shine for the special scopes (gold bands / icy diamond facets)
+-- button shine for the special scopes (gold bands / icy diamond facets / ruby)
 local GOLD_SEQ = ColorSequence.new({
 	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 240, 160)),
 	ColorSequenceKeypoint.new(0.25, Color3.fromRGB(255, 200, 40)),
@@ -39,6 +39,13 @@ local DIAMOND_SEQ = ColorSequence.new({
 	ColorSequenceKeypoint.new(0.7, Color3.fromRGB(150, 225, 255)),
 	ColorSequenceKeypoint.new(1, Color3.fromRGB(225, 248, 255)),
 })
+local RUBY_SEQ = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 120, 130)),
+	ColorSequenceKeypoint.new(0.3, Color3.fromRGB(215, 20, 45)),
+	ColorSequenceKeypoint.new(0.55, Color3.fromRGB(95, 0, 15)),
+	ColorSequenceKeypoint.new(0.8, Color3.fromRGB(230, 40, 60)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 130, 140)),
+})
 
 local COLORS = {
 	{ name = "Red",        color = Color3.fromRGB(255, 0, 0) },
@@ -52,12 +59,15 @@ local COLORS = {
 	-- PINK: pastel pink body with the gun's detail painted white (editable image texture)
 	{ name = "Pink",       color = Color3.fromRGB(255, 190, 215), mode = "texture", texStyle = "pink" },
 	{ name = "Rainbow",    color = Color3.fromRGB(255, 60, 200), mode = "texture", texStyle = "rainbow", gradient = true, rainbowFx = true },
-	-- GOLD: polished shiny metal, bands of light and deep gold along the gun, warm glints
+	-- GOLD: polished shiny metal, marbled bands of light and deep gold, warm glints
 	{ name = "Gold",       color = Color3.fromRGB(255, 200, 40), mode = "texture", texStyle = "gold", reflectance = 0.45,
 		btnGradient = GOLD_SEQ, effectSeq = GOLD_SEQ },
-	-- DIAMOND: icy see-through crystal, mirror shine, pink + teal sparkle
+	-- DIAMOND: icy crystal, mirror shine, white sparkle
 	{ name = "Diamond",    color = Color3.fromRGB(185, 242, 255), mode = "texture", texStyle = "diamond", reflectance = 0.35,
 		btnGradient = DIAMOND_SEQ, effectSeq = DIAMOND_SEQ },
+	-- RUBY: deep red gemstone with marbled swirls and bright glints
+	{ name = "Ruby",       color = Color3.fromRGB(190, 15, 40), mode = "texture", texStyle = "ruby", reflectance = 0.3,
+		btnGradient = RUBY_SEQ, effectSeq = RUBY_SEQ },
 }
 
 local RAINBOW_SPIN = 0.08
@@ -443,16 +453,16 @@ end
 local AssetService = game:GetService("AssetService")
 local pinkCache = {}                     -- "style|texture id" -> { state, image, waiters }
 
--- Rainbow texture settings (colours follow your gun reference, darker)
-local RB_BRIGHTNESS = 0.58
-local RB_X_WEIGHT = 0.75
-local RB_Y_WEIGHT = 0.25
+-- Rainbow texture settings (matched to the reference photo: near-black body, vivid bright parts)
+local RB_BRIGHTNESS = 1.0
+local RB_X_WEIGHT = 0.6
+local RB_Y_WEIGHT = 0.4
 local RB_REVERSE = false
-local RB_BODY_TINT = 0.65
-local RB_BODY_COLOR = { 190, 25, 160 }
+local RB_BODY_TINT = 0.15
+local RB_BODY_COLOR = { 40, 5, 60 }
 local RB_STOPS = {
-	{ 120, 40, 230 }, { 30, 80, 245 }, { 0, 190, 225 }, { 50, 190, 60 }, { 225, 195, 20 },
-	{ 235, 110, 10 }, { 215, 35, 35 }, { 200, 30, 170 }, { 120, 40, 230 },
+	{ 255, 40, 200 }, { 140, 40, 255 }, { 30, 110, 255 }, { 0, 230, 240 }, { 60, 235, 70 },
+	{ 255, 235, 20 }, { 255, 120, 10 }, { 255, 40, 120 }, { 255, 40, 200 },
 }
 
 local GR, GG, GB = {}, {}, {}
@@ -489,7 +499,7 @@ local TEX_STYLES = {
 				d = d * RB_BODY_TINT
 				r, g, b = r + (bc1 - r) * d, g + (bc2 - g) * d, b + (bc3 - b) * d
 			end
-			local shade = (0.45 + 0.55 * rel) * RB_BRIGHTNESS
+			local shade = (0.1 + 0.9 * rel) * RB_BRIGHTNESS
 			r, g, b = r * shade, g * shade, b * shade
 			local w = (rel - 0.88) / 0.12
 			if w > 0 then
@@ -517,55 +527,54 @@ local function buildRamp(stops)
 end
 
 local GOLD_R, GOLD_G, GOLD_B = buildRamp({
-	{ 70, 40, 0 }, { 150, 95, 5 }, { 230, 170, 20 }, { 255, 215, 70 }, { 255, 240, 150 }, { 255, 252, 225 },
+	{ 90, 40, 0 }, { 170, 80, 5 }, { 225, 130, 10 }, { 255, 175, 25 }, { 255, 215, 80 }, { 255, 245, 170 },
 })
 local DIA_R, DIA_G, DIA_B = buildRamp({
-	{ 25, 70, 130 }, { 70, 150, 215 }, { 140, 220, 255 }, { 215, 245, 255 }, { 255, 255, 255 },
+	{ 45, 75, 120 }, { 90, 130, 185 }, { 150, 190, 225 }, { 205, 225, 245 }, { 245, 250, 255 },
+})
+local RUBY_R, RUBY_G, RUBY_B = buildRamp({
+	{ 30, 0, 6 }, { 105, 4, 22 }, { 175, 12, 38 }, { 235, 40, 60 }, { 255, 110, 120 }, { 255, 200, 205 },
 })
 -- PINK: dark parts of the gun = pastel pink, the gun's detail / bright parts fade up to pure white
 local PINK_R, PINK_G, PINK_B = buildRamp({
 	{ 244, 160, 196 }, { 255, 184, 212 }, { 255, 208, 228 }, { 255, 235, 244 }, { 255, 255, 255 },
 })
 
-TEX_STYLES.gold = function(stats)
-	local lo, hi = stats.q(0.05), stats.q(0.95)
-	local span = math.max(hi - lo, 0.05)
-	local sin, floor = math.sin, math.floor
-	return function(lum, u, v)
-		local rel = (lum - lo) / span
-		if rel < 0 then rel = 0 elseif rel > 1 then rel = 1 end
-		local band = 0.5 + 0.5 * sin((u * 0.8 + v * 0.5) * 22)
-		local t = rel * 0.75 + (band - 0.5) * 0.35 + 0.18
-		if t < 0 then t = 0 elseif t > 1 then t = 1 end
-		local k = floor(t * 255) + 1
-		return GOLD_R[k], GOLD_G[k], GOLD_B[k]
+-- soft marble swirl 0..1, shared by gold / diamond / ruby
+local function marble(u, v, scale)
+	local sin = math.sin
+	return 0.5 + 0.25 * sin(u * 34 * scale + sin(v * 21 * scale) * 2.2)
+		+ 0.25 * sin(v * 38 * scale + sin(u * 17 * scale) * 2.2)
+end
+
+local function makeMarbleStyle(R, G, B, strength, glintLevel)
+	return function(stats)
+		local lo, hi = stats.q(0.05), stats.q(0.95)
+		local span = math.max(hi - lo, 0.05)
+		local sin, floor = math.sin, math.floor
+		return function(lum, u, v)
+			local rel = (lum - lo) / span
+			if rel < 0 then rel = 0 elseif rel > 1 then rel = 1 end
+			local t = rel * 0.7 + (marble(u, v, 1) - 0.5) * strength + 0.12
+			if t < 0 then t = 0 elseif t > 1 then t = 1 end
+			local k = floor(t * 255) + 1
+			local r, g, b = R[k], G[k], B[k]
+			if glintLevel then
+				local h = sin(floor(u * 110) * 12.9898 + floor(v * 110) * 78.233) * 43758.5453
+				h = h - floor(h)
+				if h > glintLevel then
+					local w = (h - glintLevel) / (1 - glintLevel)
+					r, g, b = r + (255 - r) * w, g + (255 - g) * w, b + (255 - b) * w
+				end
+			end
+			return r, g, b
+		end
 	end
 end
 
-TEX_STYLES.diamond = function(stats)
-	local lo, hi = stats.q(0.05), stats.q(0.95)
-	local span = math.max(hi - lo, 0.05)
-	local sin, floor = math.sin, math.floor
-	return function(lum, u, v)
-		local rel = (lum - lo) / span
-		if rel < 0 then rel = 0 elseif rel > 1 then rel = 1 end
-		local f1 = 0.5 + 0.5 * sin((u + v * 0.7) * 30)
-		local f2 = 0.5 + 0.5 * sin((u * 0.6 - v) * 24)
-		local t = rel * 0.6 + f1 * 0.2 + f2 * 0.2 + 0.05
-		if t < 0 then t = 0 elseif t > 1 then t = 1 end
-		local k = floor(t * 255) + 1
-		local r, g, b = DIA_R[k], DIA_G[k], DIA_B[k]
-		local h = sin(floor(u * 90) * 12.9898 + floor(v * 90) * 78.233) * 43758.5453
-		h = h - floor(h)
-		if h > 0.975 then
-			return 255, 255, 255
-		elseif h > 0.93 then
-			local w = (h - 0.93) / 0.045 * 0.7
-			r, g, b = r + (255 - r) * w, g + (255 - g) * w, b + (255 - b) * w
-		end
-		return r, g, b
-	end
-end
+TEX_STYLES.gold = makeMarbleStyle(GOLD_R, GOLD_G, GOLD_B, 0.45, 0.992)
+TEX_STYLES.diamond = makeMarbleStyle(DIA_R, DIA_G, DIA_B, 0.35, 0.975)
+TEX_STYLES.ruby = makeMarbleStyle(RUBY_R, RUBY_G, RUBY_B, 0.4, 0.985)
 
 TEX_STYLES.pink = function(stats)
 	local lo, hi = stats.q(0.05), stats.q(0.95)
@@ -581,7 +590,7 @@ TEX_STYLES.pink = function(stats)
 	end
 end
 
-local PREBUILD_STYLES = { "rainbow", "gold", "diamond", "pink" }
+local PREBUILD_STYLES = { "rainbow", "gold", "diamond", "ruby", "pink" }
 
 local function percentileOf(hist, total, p)
 	if total == 0 then return p end
@@ -795,7 +804,7 @@ function tintMesh(mp, color)
 		local okTex, tex = pcall(function() return mp.TextureID end)
 		if not okTex or type(tex) ~= "string" or tex == "" then return end
 		local style = selected.texStyle or "rainbow"
-		if selected.reflectance then -- gold / diamond: a little real metal shine on top of the painted texture
+		if selected.reflectance then -- gold / diamond / ruby: a little real metal shine on top of the painted texture
 			set(mp, "Material", Enum.Material.Metal)
 			set(mp, "Reflectance", selected.reflectance)
 			chromed[mp] = true
@@ -1637,11 +1646,7 @@ end
 local function applyColor(entry)
 	selected = entry
 	if not glassWanted() then unglassAll() end
-	if not wantsSheen() then
-		for part in pairs(sheens) do removeSheen(part) end
-	else
-		for part in pairs(sheens) do removeSheen(part) end
-	end
+	for part in pairs(sheens) do removeSheen(part) end
 	local found, effects = 0, 0
 	for tool in pairs(hooked) do
 		if tool.Parent then
