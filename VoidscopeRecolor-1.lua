@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local GuiService = game:GetService("GuiService")
 local LocalPlayer = Players.LocalPlayer
 
 local SHOT_WINDOW = 1.0          -- seconds after you fire during which new effects count as your shot
@@ -30,10 +31,10 @@ local WHITE_INVERT = false
 
 -- BOMB EMOTE SETTINGS (Gold Bomb / Prank Bomb tabs)
 local BOMB_RADIUS = 100          -- studs from you within which a bomb that isn't in your character counts as yours
-local BOMB_RAINBOW_SPEED = 0.3   -- how fast the Rainbow bomb colour cycles
+local BOMB_RAINBOW_SPEED = 0.3   -- how fast the fallback Rainbow colour cycles (plain parts / while the texture builds)
 -- Extra names to look for (copy the exact name you see in Dex). Spaces / _ / - and capitals are ignored.
--- Example: prank = { "cartoonbomb", "jokebomb" }
-local BOMB_NAMES = { gold = {}, prank = {} }
+-- The prank bomb emote is called "FakeBomb" so that is built in.
+local BOMB_NAMES = { gold = {}, prank = { "fakebomb" } }
 -- set to true, then use the emote: the F9 console prints every new object that appears near you,
 -- so you can read the bomb's real name and add it to BOMB_NAMES above
 local BOMB_DEBUG = false
@@ -86,6 +87,23 @@ local COLORS = {
 		btnGradient = RUBY_SEQ, effectSeq = RUBY_SEQ },
 }
 
+-- COLOURS FOR THE BOMB TABS (Gold Bomb + Prank Bomb use the same list)
+-- no Gold / Diamond / Ruby here. White and Pink use "light = true": the bomb keeps its normal texture
+-- detail but is painted pale white / pure pink. Rainbow uses a rainbow texture on the bomb's own texture.
+local BOMB_COLORS = {
+	{ name = "Red",        color = Color3.fromRGB(255, 0, 0) },
+	{ name = "Green",      color = Color3.fromRGB(0, 255, 0) },
+	{ name = "Black",      color = Color3.fromRGB(0, 0, 0) },
+	{ name = "Orange",     color = Color3.fromRGB(255, 128, 0) },
+	{ name = "Yellow",     color = Color3.fromRGB(255, 255, 0) },
+	{ name = "Blue",       color = Color3.fromRGB(0, 100, 255) },
+	{ name = "Purple",     color = Color3.fromRGB(160, 32, 240) },
+	{ name = "Cyan",       color = Color3.fromRGB(0, 255, 255) },
+	{ name = "Pink",       color = Color3.fromRGB(255, 105, 180), light = true },
+	{ name = "White",      color = Color3.fromRGB(238, 238, 244), light = true },
+	{ name = "Rainbow",    color = Color3.fromRGB(255, 60, 200), texStyle = "rainbow", gradient = true, rainbowFx = true },
+}
+
 local RAINBOW_SPIN = 0.08
 local RAINBOW = { name = "Chroma", color = Color3.fromRGB(255, 80, 200), mode = "rainbow" }
 local RAINBOW_KEYS = {}
@@ -115,38 +133,26 @@ local ICON_PNG_B64 = [=[
 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
-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
+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
 ]=]
 
 local env = (getgenv and getgenv()) or _G
@@ -548,6 +554,22 @@ TEX_STYLES.rainbow = (
 	end
 )
 
+-- BOMB RAINBOW: same rainbow colours but much brighter, so the bomb's own texture detail stays visible
+-- and the colours really show (the gun version keeps a near-black body)
+TEX_STYLES.bombrainbow = function(stats)
+	local lo, hi = stats.q(0.03), stats.q(0.97)
+	local span = math.max(hi - lo, 0.05)
+	return function(lum, u, v)
+		local rel = (lum - lo) / span
+		if rel < 0 then rel = 0 elseif rel > 1 then rel = 1 end
+		local s = u * 0.6 + v * 0.4
+		if s < 0 then s = 0 elseif s > 1 then s = 1 end
+		local k = math.floor(s * 255) + 1
+		local shade = 0.6 + 0.4 * rel
+		return GR[k] * shade, GG[k] * shade, GB[k] * shade
+	end
+end
+
 local function buildRamp(stops)
 	local R, G, B = {}, {}, {}
 	for k = 1, 256 do
@@ -687,14 +709,27 @@ end
 end -- end of texture-style block
 
 -- BOMB SHADE: a grey copy of a texture (detail kept, colour removed). Tinting it with a colour recolours the
--- bomb while the texture detail stays.
+-- bomb while the texture detail stays. Kept fairly bright so the colour really shows.
 TEX_STYLES.bombshade = function(stats)
 	local lo, hi = stats.q(0.03), stats.q(0.97)
 	local span = math.max(hi - lo, 0.05)
 	return function(lum)
 		local rel = (lum - lo) / span
 		if rel < 0 then rel = 0 elseif rel > 1 then rel = 1 end
-		local s = (0.28 + 0.72 * rel) * 255
+		local s = (0.5 + 0.5 * rel) * 255
+		return s, s, s
+	end
+end
+
+-- BOMB SHADE (LIGHT): very bright grey copy, used for pale White and pure Pink so they stay light
+-- but still show the bomb's normal texture detail
+TEX_STYLES.bombshadelight = function(stats)
+	local lo, hi = stats.q(0.03), stats.q(0.97)
+	local span = math.max(hi - lo, 0.05)
+	return function(lum)
+		local rel = (lum - lo) / span
+		if rel < 0 then rel = 0 elseif rel > 1 then rel = 1 end
+		local s = (0.84 + 0.16 * rel) * 255
 		return s, s, s
 	end
 end
@@ -960,7 +995,7 @@ local function runJobs()
 				setNote(image and "" or ("Texture edit failed: " .. tostring(why)))
 			end
 			for w in pairs(waiting) do
-				if selected and selected.mode == "texture" and w.Parent then
+				if selected and selected.mode == "texture" and typeof(w) == "Instance" and w.Parent then
 					pcall(tintMesh, w, colorFor(w))
 				end
 			end
@@ -1817,24 +1852,28 @@ end)
 
 ---------------------------------------------------------------------
 -- BOMB EMOTES (Gold Bomb / Prank Bomb tabs)
--- Finds anything named like "GoldBomb" / "Gold Bomb" / "Prank_Bomb" (and anything inside it),
--- in your character, your backpack, or near you in the workspace, and recolours it with a flat colour.
+-- Finds anything named like "GoldBomb" / "Gold Bomb" / "FakeBomb" (and anything inside it),
+-- in your character, your backpack, or near you in the workspace, and recolours it.
 -- Bombs that appear later (when you use the emote) are recoloured the moment they spawn.
+-- The bomb keeps its own texture: it is swapped for a bright grey copy of itself that is tinted with
+-- your colour (so the colour really shows and the detail stays). The colour is shown instantly on the
+-- original texture while the grey copy builds. Rainbow uses a rainbow-painted copy of the texture.
 -- Uses its own save-slot so resetting the scope never touches the bombs and vice versa.
 ---------------------------------------------------------------------
 -- these five are used by the menu / cleanup further down; everything else stays inside the block
 local BOMB_KINDS, bombSel, bombButtons, resetBomb, applyBomb
 do
 BOMB_KINDS = { "gold", "prank" }
-bombSel = {}                                         -- kind -> selected COLORS entry
+bombSel = {}                                         -- kind -> selected colour entry
 local bombTouched = {
 	gold = setmetatable({}, { __mode = "k" }),
 	prank = setmetatable({}, { __mode = "k" }),
 }
 bombButtons = { gold = {}, prank = {} }              -- kind -> { colour name -> button background }
 local bombOrig = setmetatable({}, { __mode = "k" })  -- inst -> { prop = original value }
-local bombRainbow = setmetatable({}, { __mode = "k" }) -- part -> hue offset (Rainbow bomb)
+local bombRainbow = setmetatable({}, { __mode = "k" }) -- part -> hue offset (fallback Rainbow colour)
 local bombGuarded = setmetatable({}, { __mode = "k" })
+local bombPartGuard = setmetatable({}, { __mode = "k" })
 local bombOwn = setmetatable({}, { __mode = "k" })   -- roots we already decided are yours
 local bombScan = { gold = 0, prank = 0 }
 local lastBombSpin = 0
@@ -1865,7 +1904,7 @@ local function nameKind(name)
 		end
 	end
 	if string.find(n, "bomb", 1, true) then
-		if string.find(n, "prank", 1, true) then return "prank" end
+		if string.find(n, "prank", 1, true) or string.find(n, "fake", 1, true) then return "prank" end
 		if string.find(n, "gold", 1, true) then return "gold" end
 	end
 	return nil
@@ -1875,7 +1914,7 @@ local function isHumanoidModel(inst)
 	return inst:IsA("Model") and inst:FindFirstChildOfClass("Humanoid") ~= nil
 end
 
--- walks up from inst looking for a "gold bomb" / "prank bomb" named parent (never tests a player's own character name)
+-- walks up from inst looking for a "gold bomb" / "fake bomb" named parent (never tests a player's own character name)
 local function bombKindOf(inst)
 	local cur, depth = inst, 0
 	while cur and cur ~= Workspace and cur ~= game and depth < 14 do
@@ -1911,8 +1950,12 @@ local function bombIsYours(root)
 	return true
 end
 
+local function isRainbowEntry(entry)
+	return entry.texStyle == "rainbow" or entry.mode == "rainbow"
+end
+
 local function bombWantSeq(entry)
-	if entry.texStyle == "rainbow" or entry.mode == "rainbow" then return RAINBOW_SEQUENCE end
+	if isRainbowEntry(entry) then return RAINBOW_SEQUENCE end
 	return entry.effectSeq or ColorSequence.new(entry.color)
 end
 
@@ -1930,9 +1973,25 @@ local function guardBombEffect(inst, kind)
 	end)
 end
 
-local bombSA = setmetatable({}, { __mode = "k" })   -- part -> the SurfaceAppearance showing the shaded texture
-local bombTex = setmetatable({}, { __mode = "k" })  -- part -> its original texture id
-local bombWait = setmetatable({}, { __mode = "k" }) -- part -> waiting for its shade texture to finish building
+-- if the game paints a plain bomb part back to its own colour, paint it again
+local function guardBombPart(inst, kind)
+	if bombPartGuard[inst] then return end
+	bombPartGuard[inst] = true
+	connect(inst:GetPropertyChangedSignal("Color"), function()
+		local e = bombSel[kind]
+		if not e or isRainbowEntry(e) then return end
+		if bombTouched[kind][inst] and not colorsClose(inst.Color, e.color) then
+			local sa = nil
+			bset(inst, "Color", e.color)
+		end
+	end)
+end
+
+local bombSA = setmetatable({}, { __mode = "k" })    -- part -> the SurfaceAppearance we are showing
+local bombSAKey = setmetatable({}, { __mode = "k" }) -- part -> which look that appearance is ("tint", "bombshade", ...)
+local bombTex = setmetatable({}, { __mode = "k" })   -- part -> its original texture id
+local bombHid = setmetatable({}, { __mode = "k" })   -- part -> the game's own SurfaceAppearance we took off (put back on reset)
+local bombWait = setmetatable({}, { __mode = "k" })  -- part -> waiting for its texture copy to finish building
 local paintBombInst
 
 local function ownAppearance(mp)
@@ -1942,73 +2001,113 @@ local function ownAppearance(mp)
 	return nil
 end
 
--- keeps the texture: swaps it for a grey copy of itself (same detail) and tints that grey copy with the colour
-local function applyShade(mp, color, kind)
-	local own = ownAppearance(mp)
+local function destroyBombSA(mp)
+	local sa = bombSA[mp]
+	if sa then pcall(function() sa:Destroy() end) end
+	bombSA[mp] = nil
+	bombSAKey[mp] = nil
+end
+
+-- shows one look on the mesh. A look is never edited in place: a different look gets a brand new appearance,
+-- so there is never a stale / flat texture
+local function showSA(mp, key, texString, image, color)
+	local sa = bombSA[mp]
+	if sa and sa.Parent == mp and bombSAKey[mp] == key then
+		pcall(function() sa.Color = color end)
+		return true
+	end
+	destroyBombSA(mp)
+	sa = Instance.new("SurfaceAppearance")
+	sa.Name = "VSBombSurface"
+	local ok = pcall(function()
+		if image then
+			sa.ColorMapContent = Content.fromObject(image)
+		else
+			sa.ColorMap = texString
+		end
+		sa.Color = color
+	end)
+	if not ok then
+		pcall(function() sa:Destroy() end)
+		return false
+	end
+	sa.Parent = mp
+	bombSA[mp] = sa
+	bombSAKey[mp] = key
+	return true
+end
+
+-- keeps the texture: swaps it for a grey copy of itself (same detail) and tints that copy with the colour.
+-- Returns true only when the final textured look is showing. Until then the colour is already visible
+-- as a tint on the original texture.
+local function applyShade(mp, color, kind, entry)
 	local tex = bombTex[mp]
 	if not tex then
-		if own then
-			pcall(function() tex = own.ColorMap end)
-		else
+		local own = ownAppearance(mp)
+		if own then pcall(function() tex = own.ColorMap end) end
+		if type(tex) ~= "string" or tex == "" then
 			pcall(function() tex = mp.TextureID end)
 		end
 		if type(tex) ~= "string" or tex == "" then return false end
 		bombTex[mp] = tex
+		if own then
+			bombHid[mp] = own   -- take the game's own appearance off so ours is the only one showing
+			own.Parent = nil
+		end
 	end
-	local entry = ensureTexture("bombshade", tex)
-	if not entry then return false end
-	if entry.state == "working" then
-		entry.waiters[{}] = true -- speeds the build up; a dummy key so nothing else gets repainted
+	local style
+	if isRainbowEntry(entry) then
+		style = "bombrainbow"
+	elseif entry.light then
+		style = "bombshadelight"
+	else
+		style = "bombshade"
+	end
+	local ent = ensureTexture(style, tex)
+	if ent and ent.state == "done" then
+		local c = (style == "bombrainbow") and Color3.new(1, 1, 1) or color
+		if showSA(mp, style, nil, ent.image, c) then return true end
+		pinkCache[style .. "|" .. tex] = nil -- the image went bad, build it again next time
+	end
+	-- not ready yet: show the colour right away on the original texture
+	showSA(mp, "tint", tex, nil, color)
+	if ent and ent.state == "working" then
+		ent.waiters[{}] = true -- speeds the build up; a dummy key so nothing else gets repainted
 		if not bombWait[mp] then
 			bombWait[mp] = true
 			task.spawn(function()
 				local t0 = os.clock()
-				while entry.state == "working" and os.clock() - t0 < 90 do task.wait(0.1) end
+				while ent.state == "working" and os.clock() - t0 < 90 do task.wait(0.1) end
 				bombWait[mp] = nil
 				local e = bombSel[kind]
-				if e and mp.Parent and entry.state == "done" then paintBombInst(mp, e, kind) end
+				if e and mp.Parent and ent.state == "done" then paintBombInst(mp, e, kind) end
 			end)
 		end
-		return false
 	end
-	if entry.state ~= "done" then return false end
-	local sa = own
-	if own then
-		bset(own, "ColorMapContent", Content.fromObject(entry.image))
-		bset(own, "Color", color)
-		bombTouched[kind][own] = true
-	else
-		sa = bombSA[mp]
-		if not (sa and sa.Parent) then
-			sa = Instance.new("SurfaceAppearance")
-			sa.Name = "VSBombSurface"
-			local okc = pcall(function() sa.ColorMapContent = Content.fromObject(entry.image) end)
-			if not okc then
-				pcall(function() sa:Destroy() end)
-				return false
-			end
-			sa.Parent = mp
-		end
-		sa.Color = color
-	end
-	bombSA[mp] = sa
-	return true
+	return false
 end
 
 function paintBombInst(inst, entry, kind)
-	local rainbow = entry.texStyle == "rainbow" or entry.mode == "rainbow"
+	local rainbow = isRainbowEntry(entry)
 	local color = entry.color
 	if inst:IsA("BasePart") then
 		bombTouched[kind][inst] = true
 		if rainbow then
 			bombRainbow[inst] = bombRainbow[inst] or math.random()
 			color = Color3.fromHSV((os.clock() * BOMB_RAINBOW_SPEED + bombRainbow[inst]) % 1, 0.9, 1)
+			local shaded = false
+			if inst:IsA("MeshPart") then shaded = applyShade(inst, color, kind, entry) end
+			if shaded then
+				bombRainbow[inst] = nil -- the rainbow texture is showing, stop cycling the tint
+				color = Color3.new(1, 1, 1)
+			end
 		else
 			bombRainbow[inst] = nil
+			if inst:IsA("MeshPart") then applyShade(inst, color, kind, entry) end
 		end
 		bset(inst, "Color", color)
-		if inst:IsA("MeshPart") then applyShade(inst, color, kind) end -- texture stays, colour changes
 		if entry.reflectance then bset(inst, "Reflectance", entry.reflectance) end
+		guardBombPart(inst, kind)
 		return true
 	elseif isEffect(inst) then
 		bombTouched[kind][inst] = true
@@ -2017,7 +2116,11 @@ function paintBombInst(inst, entry, kind)
 		return true
 	elseif inst:IsA("SpecialMesh") then
 		bombTouched[kind][inst] = true
-		bset(inst, "VertexColor", Vector3.new(color.R, color.G, color.B))
+		if rainbow then
+			bset(inst, "VertexColor", Vector3.new(1, 1, 1)) -- the part's cycling colour shows through
+		else
+			bset(inst, "VertexColor", Vector3.new(color.R, color.G, color.B))
+		end
 		return true
 	elseif inst:IsA("SurfaceAppearance") then
 		bombTouched[kind][inst] = true -- its MeshPart recolours it (keeping the texture)
@@ -2054,10 +2157,13 @@ end
 
 local function restoreBombInst(inst)
 	bombRainbow[inst] = nil
-	local sa = bombSA[inst]
-	if sa and sa.Name == "VSBombSurface" then pcall(function() sa:Destroy() end) end
-	bombSA[inst] = nil
+	destroyBombSA(inst)
 	bombTex[inst] = nil
+	local hid = bombHid[inst]
+	if hid then
+		pcall(function() hid.Parent = inst end)
+		bombHid[inst] = nil
+	end
 	local saved = bombOrig[inst]
 	if saved then
 		for prop, v in pairs(saved) do
@@ -2123,7 +2229,8 @@ local function scanBomb(kind, entry)
 		end
 		if bombScan[kind] ~= token then return end
 		if found == 0 then
-			setNote("No " .. kind .. " bomb seen yet. It recolours when you use the emote.")
+			local nice = (kind == "prank") and "prank bomb (FakeBomb)" or "gold bomb"
+			setNote("No " .. nice .. " seen yet. It recolours when you use the emote.")
 		else
 			setNote("")
 		end
@@ -2185,7 +2292,7 @@ end)
 end -- end of bomb block
 
 ---------------------------------------------------------------------
--- HEX PARSER (used by the hex colour picker on the Scopes tab)
+-- HEX PARSER (used by the colour picker)
 ---------------------------------------------------------------------
 local function parseHex(s)
 	s = string.gsub(s or "", "[#%s]", "")
@@ -2373,6 +2480,16 @@ local function buildGui()
 		ColorSequenceKeypoint.new(0.52, Color3.fromRGB(75, 75, 84)),
 		ColorSequenceKeypoint.new(1, Color3.fromRGB(135, 135, 144)),
 	})
+
+	-- where the mouse / finger is, in the same space as AbsolutePosition
+	local function pointerPos(input)
+		if input.UserInputType == Enum.UserInputType.Touch then
+			return Vector2.new(input.Position.X, input.Position.Y)
+		end
+		local m = UserInputService:GetMouseLocation()
+		local inset = GuiService:GetGuiInset()
+		return Vector2.new(m.X - inset.X, m.Y - inset.Y)
+	end
 
 	local function makeGlassButton(parent, order, text, fillColor, fillGradient, onClick, transparency)
 		local holder = Instance.new("Frame")
@@ -2623,8 +2740,9 @@ local function buildGui()
 		return l
 	end
 
-	-- scrolling list of every colour; suffix = "SCOPE" or "BOMB", store = table that remembers each button
-	local function colorScroll(page, nextFn, suffix, onPick, store)
+	-- scrolling list of colours; suffix = " SCOPE" or " BOMB", store = table that remembers each button,
+	-- list = which colour table to show
+	local function colorScroll(page, nextFn, suffix, onPick, store, list)
 		local scroll = Instance.new("ScrollingFrame")
 		scroll.Name = "Colours"
 		scroll.LayoutOrder = nextFn()
@@ -2654,7 +2772,7 @@ local function buildGui()
 		scrollList.Padding = UDim.new(0, 6)
 		scrollList.SortOrder = Enum.SortOrder.LayoutOrder
 
-		for i, entry in ipairs(COLORS) do
+		for i, entry in ipairs(list) do
 			local shown = colorsClose(entry.color, Color3.new(0, 0, 0)) and Color3.fromRGB(40, 40, 46) or entry.color
 			local grad = entry.btnGradient or (entry.gradient and RAINBOW_SEQUENCE) or nil
 			local bg, _, holder = makeGlassButton(scroll, i, string.upper(entry.name) .. suffix, shown, grad,
@@ -2663,6 +2781,254 @@ local function buildGui()
 			store[entry.name] = bg
 		end
 		return scroll
+	end
+
+	-- COLOUR PICKER: a colour box with a dot you drag around (saturation / brightness), a hue slider,
+	-- and a hex box. onApply(color, final) is called while dragging (final = false) and when you let go (final = true).
+	local function buildPicker(page, nextFn, onApply)
+		sectionLabel(page, nextFn, "COLOUR PICKER")
+		local h, s, v = 0, 1, 1
+		local dragging = nil
+		local lastApply = 0
+		local settingText = false
+
+		local sv = Instance.new("TextButton")
+		sv.LayoutOrder = nextFn()
+		sv.Size = UDim2.new(1, 0, 0, 110)
+		sv.AutoButtonColor = false
+		sv.Text = ""
+		sv.BorderSizePixel = 0
+		sv.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
+		sv.ClipsDescendants = true
+		sv.Parent = page
+		Instance.new("UICorner", sv).CornerRadius = UDim.new(0, 8)
+		local svStroke = Instance.new("UIStroke")
+		svStroke.Color = BUTTON_OUTLINE
+		svStroke.Thickness = 1
+		svStroke.Transparency = 0.3
+		svStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		svStroke.Parent = sv
+
+		local whiteLayer = Instance.new("Frame")
+		whiteLayer.Size = UDim2.new(1, 0, 1, 0)
+		whiteLayer.BackgroundColor3 = Color3.new(1, 1, 1)
+		whiteLayer.BorderSizePixel = 0
+		whiteLayer.ZIndex = 2
+		whiteLayer.Parent = sv
+		local wg = Instance.new("UIGradient")
+		wg.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		wg.Parent = whiteLayer
+
+		local blackLayer = Instance.new("Frame")
+		blackLayer.Size = UDim2.new(1, 0, 1, 0)
+		blackLayer.BackgroundColor3 = Color3.new(0, 0, 0)
+		blackLayer.BorderSizePixel = 0
+		blackLayer.ZIndex = 3
+		blackLayer.Parent = sv
+		local bg2 = Instance.new("UIGradient")
+		bg2.Rotation = 90
+		bg2.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(1, 0),
+		})
+		bg2.Parent = blackLayer
+
+		local dot = Instance.new("Frame")
+		dot.AnchorPoint = Vector2.new(0.5, 0.5)
+		dot.Size = UDim2.new(0, 16, 0, 16)
+		dot.BackgroundColor3 = Color3.new(1, 0, 0)
+		dot.BorderSizePixel = 0
+		dot.ZIndex = 5
+		dot.Parent = sv
+		Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+		local dotStroke = Instance.new("UIStroke")
+		dotStroke.Color = Color3.new(1, 1, 1)
+		dotStroke.Thickness = 2.5
+		dotStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		dotStroke.Parent = dot
+
+		local hue = Instance.new("TextButton")
+		hue.LayoutOrder = nextFn()
+		hue.Size = UDim2.new(1, 0, 0, 16)
+		hue.AutoButtonColor = false
+		hue.Text = ""
+		hue.BorderSizePixel = 0
+		hue.BackgroundColor3 = Color3.new(1, 1, 1)
+		hue.Parent = page
+		Instance.new("UICorner", hue).CornerRadius = UDim.new(0, 8)
+		local hueKeys = {}
+		for i = 0, 6 do
+			table.insert(hueKeys, ColorSequenceKeypoint.new(i / 6, Color3.fromHSV(i / 6 >= 1 and 0 or i / 6, 1, 1)))
+		end
+		local hg = Instance.new("UIGradient")
+		hg.Color = ColorSequence.new(hueKeys)
+		hg.Parent = hue
+		local marker = Instance.new("Frame")
+		marker.AnchorPoint = Vector2.new(0.5, 0.5)
+		marker.Size = UDim2.new(0, 8, 1, 6)
+		marker.BackgroundColor3 = Color3.new(1, 1, 1)
+		marker.BorderSizePixel = 0
+		marker.ZIndex = 3
+		marker.Parent = hue
+		Instance.new("UICorner", marker).CornerRadius = UDim.new(0, 4)
+		local markerStroke = Instance.new("UIStroke")
+		markerStroke.Color = Color3.new(0, 0, 0)
+		markerStroke.Thickness = 1.5
+		markerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		markerStroke.Parent = marker
+
+		local hexRow = Instance.new("Frame")
+		hexRow.LayoutOrder = nextFn()
+		hexRow.Size = UDim2.new(1, 0, 0, 30)
+		hexRow.BackgroundTransparency = 1
+		hexRow.Parent = page
+		local hexList = Instance.new("UIListLayout")
+		hexList.FillDirection = Enum.FillDirection.Horizontal
+		hexList.Padding = UDim.new(0, 6)
+		hexList.SortOrder = Enum.SortOrder.LayoutOrder
+		hexList.Parent = hexRow
+
+		local swatch = Instance.new("Frame")
+		swatch.LayoutOrder = 1
+		swatch.Size = UDim2.new(0, 30, 1, 0)
+		swatch.BackgroundColor3 = Color3.new(1, 0, 0)
+		swatch.BorderSizePixel = 0
+		swatch.Parent = hexRow
+		Instance.new("UICorner", swatch).CornerRadius = UDim.new(0, 8)
+		local swatchStroke = Instance.new("UIStroke")
+		swatchStroke.Color = BUTTON_OUTLINE
+		swatchStroke.Thickness = 1
+		swatchStroke.Transparency = 0.3
+		swatchStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		swatchStroke.Parent = swatch
+
+		local hexBox = Instance.new("TextBox")
+		hexBox.LayoutOrder = 2
+		hexBox.Size = UDim2.new(1, -112, 1, 0)
+		hexBox.BackgroundColor3 = Color3.fromRGB(20, 21, 28)
+		hexBox.BackgroundTransparency = 0.1
+		hexBox.BorderSizePixel = 0
+		hexBox.ClearTextOnFocus = false
+		hexBox.PlaceholderText = "#FF8800"
+		hexBox.PlaceholderColor3 = Color3.fromRGB(130, 132, 148)
+		hexBox.Text = "#FF0000"
+		hexBox.Font = BUBBLY_FONT
+		hexBox.TextSize = 14
+		hexBox.TextColor3 = Color3.new(1, 1, 1)
+		hexBox.TextXAlignment = Enum.TextXAlignment.Left
+		hexBox.Parent = hexRow
+		Instance.new("UICorner", hexBox).CornerRadius = UDim.new(0, 8)
+		local hexPad = Instance.new("UIPadding", hexBox)
+		hexPad.PaddingLeft = UDim.new(0, 8)
+		local hexStroke = Instance.new("UIStroke")
+		hexStroke.Color = BUTTON_OUTLINE
+		hexStroke.Thickness = 1
+		hexStroke.Transparency = 0.45
+		hexStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		hexStroke.Parent = hexBox
+
+		local function current()
+			return Color3.fromHSV(h, s, v)
+		end
+
+		local function refresh(skipHex)
+			local c = current()
+			sv.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
+			dot.Position = UDim2.new(s, 0, 1 - v, 0)
+			dot.BackgroundColor3 = c
+			marker.Position = UDim2.new(h, 0, 0.5, 0)
+			swatch.BackgroundColor3 = c
+			if not skipHex then
+				settingText = true
+				hexBox.Text = string.format("#%02X%02X%02X",
+					math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
+				settingText = false
+			end
+		end
+
+		local function commit(final)
+			local now = os.clock()
+			if final or now - lastApply > 0.15 then
+				lastApply = now
+				onApply(current(), final)
+			end
+		end
+
+		local function move(input)
+			local p = pointerPos(input)
+			if dragging == "sv" then
+				s = math.clamp((p.X - sv.AbsolutePosition.X) / math.max(sv.AbsoluteSize.X, 1), 0, 1)
+				v = 1 - math.clamp((p.Y - sv.AbsolutePosition.Y) / math.max(sv.AbsoluteSize.Y, 1), 0, 1)
+			elseif dragging == "hue" then
+				h = math.clamp((p.X - hue.AbsolutePosition.X) / math.max(hue.AbsoluteSize.X, 1), 0, 0.999)
+			else
+				return
+			end
+			refresh()
+			commit(false)
+		end
+
+		local function isPress(input)
+			return input.UserInputType == Enum.UserInputType.MouseButton1
+				or input.UserInputType == Enum.UserInputType.Touch
+		end
+		local function startDrag(kind, input)
+			dragging = kind
+			pcall(function() frame.Draggable = false end) -- so the menu doesn't slide around while you pick
+			move(input)
+		end
+		sv.InputBegan:Connect(function(input)
+			if isPress(input) then startDrag("sv", input) end
+		end)
+		hue.InputBegan:Connect(function(input)
+			if isPress(input) then startDrag("hue", input) end
+		end)
+		connect(UserInputService.InputChanged, function(input)
+			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+				or input.UserInputType == Enum.UserInputType.Touch) then
+				move(input)
+			end
+		end)
+		connect(UserInputService.InputEnded, function(input)
+			if dragging and isPress(input) then
+				dragging = nil
+				pcall(function() frame.Draggable = true end)
+				commit(true)
+			end
+		end)
+
+		local function applyHex()
+			local c = parseHex(hexBox.Text)
+			if not c then
+				setNote("Invalid hex, use something like #FF8800")
+				return
+			end
+			setNote("")
+			h, s, v = Color3.toHSV(c)
+			if h >= 1 then h = 0.999 end
+			refresh(false)
+			commit(true)
+		end
+		hexBox:GetPropertyChangedSignal("Text"):Connect(function()
+			if settingText then return end
+			local c = parseHex(hexBox.Text)
+			if c then
+				h, s, v = Color3.toHSV(c)
+				if h >= 1 then h = 0.999 end
+				refresh(true)
+			end
+		end)
+		hexBox.FocusLost:Connect(function(enterPressed)
+			if enterPressed then applyHex() end
+		end)
+		do
+			local _, _, holder = makeGlassButton(hexRow, 3, "APPLY", Color3.fromRGB(0, 105, 190), nil, applyHex)
+			holder.Size = UDim2.new(0, 70, 1, 0)
+		end
+		refresh(false)
 	end
 
 	-- PAGE 1: SCOPES (the original menu)
@@ -2715,83 +3081,14 @@ local function buildGui()
 	end
 
 	sectionLabel(scopesPage, scopesNext, "SCOPES")
-	colorScroll(scopesPage, scopesNext, "SCOPE", applyColor, buttons)
+	colorScroll(scopesPage, scopesNext, " SCOPE", applyColor, buttons, COLORS)
 
-	-- HEX COLOUR PICKER (bottom of the main menu)
-	sectionLabel(scopesPage, scopesNext, "HEX COLOUR")
-	local hexRow = Instance.new("Frame")
-	hexRow.LayoutOrder = scopesNext()
-	hexRow.Size = UDim2.new(1, 0, 0, 30)
-	hexRow.BackgroundTransparency = 1
-	hexRow.Parent = scopesPage
-	local hexList = Instance.new("UIListLayout")
-	hexList.FillDirection = Enum.FillDirection.Horizontal
-	hexList.Padding = UDim.new(0, 6)
-	hexList.SortOrder = Enum.SortOrder.LayoutOrder
-	hexList.Parent = hexRow
-
-	local swatch = Instance.new("Frame")
-	swatch.LayoutOrder = 1
-	swatch.Size = UDim2.new(0, 30, 1, 0)
-	swatch.BackgroundColor3 = Color3.new(1, 1, 1)
-	swatch.BorderSizePixel = 0
-	swatch.Parent = hexRow
-	Instance.new("UICorner", swatch).CornerRadius = UDim.new(0, 8)
-	local swatchStroke = Instance.new("UIStroke")
-	swatchStroke.Color = BUTTON_OUTLINE
-	swatchStroke.Thickness = 1
-	swatchStroke.Transparency = 0.3
-	swatchStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	swatchStroke.Parent = swatch
-
-	local hexBox = Instance.new("TextBox")
-	hexBox.LayoutOrder = 2
-	hexBox.Size = UDim2.new(1, -112, 1, 0)
-	hexBox.BackgroundColor3 = Color3.fromRGB(20, 21, 28)
-	hexBox.BackgroundTransparency = 0.1
-	hexBox.BorderSizePixel = 0
-	hexBox.ClearTextOnFocus = false
-	hexBox.PlaceholderText = "#FF8800"
-	hexBox.PlaceholderColor3 = Color3.fromRGB(130, 132, 148)
-	hexBox.Text = ""
-	hexBox.Font = BUBBLY_FONT
-	hexBox.TextSize = 14
-	hexBox.TextColor3 = Color3.new(1, 1, 1)
-	hexBox.TextXAlignment = Enum.TextXAlignment.Left
-	hexBox.Parent = hexRow
-	Instance.new("UICorner", hexBox).CornerRadius = UDim.new(0, 8)
-	local hexPad = Instance.new("UIPadding", hexBox)
-	hexPad.PaddingLeft = UDim.new(0, 8)
-	local hexStroke = Instance.new("UIStroke")
-	hexStroke.Color = BUTTON_OUTLINE
-	hexStroke.Thickness = 1
-	hexStroke.Transparency = 0.45
-	hexStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	hexStroke.Parent = hexBox
-
-	local function applyHex()
-		local c = parseHex(hexBox.Text)
-		if not c then
-			setNote("Invalid hex, use something like #FF8800")
-			return
-		end
-		swatch.BackgroundColor3 = c
-		setNote("")
+	-- COLOUR PICKER (bottom of the main menu): drag the dot around the box, slide the hue, or type a hex
+	buildPicker(scopesPage, scopesNext, function(c)
 		applyColor({ name = "Custom", color = c })
-	end
-	hexBox:GetPropertyChangedSignal("Text"):Connect(function()
-		local c = parseHex(hexBox.Text)
-		if c then swatch.BackgroundColor3 = c end
 	end)
-	hexBox.FocusLost:Connect(function(enterPressed)
-		if enterPressed then applyHex() end
-	end)
-	do
-		local _, _, holder = makeGlassButton(hexRow, 3, "APPLY", Color3.fromRGB(0, 105, 190), nil, applyHex)
-		holder.Size = UDim2.new(0, 70, 1, 0)
-	end
 
-	-- PAGES 2 + 3: GOLD BOMB / PRANK BOMB
+	-- PAGES 2 + 3: GOLD BOMB / PRANK BOMB (prank bomb = the "FakeBomb" emote)
 	local function buildBombPage(kind, pageName, niceName)
 		local page, nextFn = newPage(pageName)
 		local row = featureRow(page, nextFn)
@@ -2804,10 +3101,16 @@ local function buildGui()
 			holder.Size = UDim2.new(1, 0, 1, 0)
 		end
 		sectionLabel(page, nextFn, niceName .. " EMOTE")
-		colorScroll(page, nextFn, "BOMB", function(entry)
+		colorScroll(page, nextFn, " BOMB", function(entry)
 			applyBomb(kind, entry)
 			updateStatus()
-		end, bombButtons[kind])
+		end, bombButtons[kind], BOMB_COLORS)
+		buildPicker(page, nextFn, function(c, final)
+			if final then
+				applyBomb(kind, { name = "Custom", color = c })
+				updateStatus()
+			end
+		end)
 	end
 	buildBombPage("gold", "gold", "GOLD BOMB")
 	buildBombPage("prank", "prank", "PRANK BOMB")
