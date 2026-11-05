@@ -13,6 +13,12 @@ local MENU_OUTLINE = Color3.fromRGB(70, 74, 88)
 local BUTTON_OUTLINE = Color3.fromRGB(120, 125, 142)  -- glass rim around every button
 local BUTTON_SELECTED = Color3.fromRGB(0, 150, 235)
 
+-- WHAT GETS RECOLOURED (edit these if a name doesn't match in your game; names are lowercase)
+local KNIFE_NAMES = { "knife" }                 -- a Tool whose name contains any of these = knife
+local GOLD_BOMB_WORDS = { "gold", "bomb" }      -- an object whose name contains ALL of these = gold bomb emote
+local PRANK_BOMB_WORDS = { "prank", "bomb" }    -- an object whose name contains ALL of these = prank bomb emote
+local BOMB_RADIUS = 80                          -- studs from you within which a bomb counts as yours
+
 -- TRAIL SETTINGS
 local TRAIL_LIFETIME = 0.8   -- how long the trail lingers (seconds)
 local TRAIL_WIDTH = 0.4      -- how thick the trail is at the tip (studs)
@@ -108,30 +114,9 @@ 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
-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
+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
 ]=]
 
 local env = (getgenv and getgenv()) or _G
@@ -139,36 +124,70 @@ if env.VoidscopeRecolorCleanup then
 	pcall(env.VoidscopeRecolorCleanup)
 end
 
-local selected = nil -- current entry from COLORS, or nil for default
+-- ============================================================
+-- CATEGORIES: each one (gun / knife / gold bomb / prank bomb) has its own selected colour
+-- ============================================================
+local selected = nil -- entry of the category being worked on right now (set by useCat)
+local cur = nil      -- the category being worked on right now
+local CAT_LIST = {}
+local instCat = setmetatable({}, { __mode = "k" })   -- any painted instance -> its category
+local trailOwner = {}                                -- trail key -> category
+
+local function newCat(key, d)
+	d.key = key
+	d.sel = nil
+	d.glass = false
+	d.trail = false
+	d.hipQueued = false
+	d.hooked = setmetatable({}, { __mode = "k" })
+	d.ui = { buttons = {} }
+	table.insert(CAT_LIST, d)
+	return d
+end
+local GUN = newCat("gun", { kind = "tool", trailable = true, refName = "DisplayRefGun", title = "gun",
+	missing = "Gun: not found yet (equip it)" })
+local KNIFE = newCat("knife", { kind = "tool", trailable = true, refName = "DisplayRefKnife", title = "knife",
+	missing = "Knife: not found yet (equip it)" })
+local GBOMB = newCat("goldbomb", { kind = "bomb", words = GOLD_BOMB_WORDS, title = "gold bomb",
+	missing = "Gold bomb: not seen yet (use the emote)" })
+local PBOMB = newCat("prankbomb", { kind = "bomb", words = PRANK_BOMB_WORDS, title = "prank bomb",
+	missing = "Prank bomb: not seen yet (use the emote)" })
+
+local function useCat(cat)
+	cur = cat
+	selected = cat and cat.sel or nil
+end
+
+local function nameHas(name, list)
+	for _, w in ipairs(list) do
+		if string.find(name, w, 1, true) then return true end
+	end
+	return false
+end
+
 local shotUntil = 0
 local shotCount = 0
 local conns = {}
 local originals = setmetatable({}, { __mode = "k" }) -- inst -> { prop = originalValue }
-local hooked = setmetatable({}, { __mode = "k" })    -- tools we've hooked
 local guarded = setmetatable({}, { __mode = "k" })   -- effects / sounds we already listen to
 local texWatched = setmetatable({}, { __mode = "k" })
 local applied = setmetatable({}, { __mode = "k" })    -- meshPart -> edited texture image it is showing right now
 local surfaces = setmetatable({}, { __mode = "k" })  -- meshPart -> the SurfaceAppearance currently showing
-local saCache = setmetatable({}, { __mode = "k" })   -- meshPart -> { tint = SA, rainbow = SA, gold = SA, ... } (one per style, swapped by re-parenting)
+local saCache = setmetatable({}, { __mode = "k" })   -- meshPart -> { tint = SA, rainbow = SA, gold = SA, ... }
 local imgOf = setmetatable({}, { __mode = "k" })     -- SurfaceAppearance -> the edited image it was built from
 local overlays = setmetatable({}, { __mode = "k" })  -- meshPart -> Highlight we added (colour wash)
 local watchedTargets = setmetatable({}, { __mode = "k" })
 local rainbowT = setmetatable({}, { __mode = "k" })       -- part -> 0..1, where it sits along the gun
 local glassed = setmetatable({}, { __mode = "k" })       -- parts currently showing our glass look
 local glassGuarded = setmetatable({}, { __mode = "k" })  -- parts we already watch for the game making them solid again
-local glassOverlay = false  -- the "See-through" switch
-local trailOn = false       -- the "Trail" switch
 local trails = setmetatable({}, { __mode = "k" })        -- tool -> { trail, a0, a1 }
 local unglassing = false
 local chromed = setmetatable({}, { __mode = "k" })       -- meshes currently showing the chrome look
 local flatSpread = setmetatable({}, { __mode = "k" })    -- parts of a gun that is a single piece
 local sheens = setmetatable({}, { __mode = "k" })        -- gun part -> the two glow lights we added to it
 local lastSpin = 0
-local hipQueued = false
 
-local gui, gunLabel, hipLabel, statusLabel, noteLabel
-local glassToggleBtn, glassToggleBg, trailToggleBtn, trailToggleBg
-local buttons = {}
+local gui, noteLabel
 
 local function connect(signal, fn)
 	local c = signal:Connect(fn)
@@ -178,12 +197,6 @@ end
 
 local function setNote(text)
 	if noteLabel then noteLabel.Text = text or "" end
-end
-local function setGunStatus(text)
-	if gunLabel then gunLabel.Text = text end
-end
-local function setHipStatus(text)
-	if hipLabel then hipLabel.Text = text end
 end
 
 local function set(inst, prop, value)
@@ -294,13 +307,15 @@ local function colorFor(inst)
 end
 
 connect(RunService.Heartbeat, function()
-	if RAINBOW_SPIN == 0 or not (selected and selected.mode == "rainbow") then return end
+	if RAINBOW_SPIN == 0 then return end
 	local now = os.clock()
 	if now - lastSpin < 0.08 then return end
 	lastSpin = now
 	for mp in pairs(rainbowT) do
+		local cat = instCat[mp]
 		local sa = surfaces[mp]
-		if sa and sa.Parent then
+		if cat and cat.sel and cat.sel.mode == "rainbow" and sa and sa.Parent then
+			useCat(cat)
 			sa.Color = colorFor(mp)
 		end
 	end
@@ -745,7 +760,6 @@ local function loadSource(tex, budgetFn)
 			breathe()
 		end
 		-- marble fields, worked out once per texture and shared by Diamond / Ruby
-		-- nA = soft blotches, nV = thin bright veins / cracks, nG = fine grain for sparkles
 		local nA, nV, nG = buffer.create(w * h), buffer.create(w * h), buffer.create(w * h)
 		local S = MARBLE_SCALE
 		local mfloor, mabs, mmax = math.floor, math.abs, math.max
@@ -827,8 +841,6 @@ local function paintSource(src, makePixel, budgetFn)
 end
 
 -- puts the edited image on the mesh. Returns true if it is showing.
--- Every style gets its OWN SurfaceAppearance on the mesh. Switching styles just swaps which one is
--- parented, so no image is ever re-assigned on a live appearance (that was the cause of the flat colour).
 local function applyEdited(mp, image, style)
 	local cache = saCache[mp]
 	if not cache then
@@ -909,7 +921,9 @@ local function runJobs()
 				setNote(image and "" or ("Texture edit failed: " .. tostring(why)))
 			end
 			for w in pairs(waiting) do
-				if selected and selected.mode == "texture" and w.Parent then
+				local cat = instCat[w]
+				if cat and cat.sel and cat.sel.mode == "texture" and w.Parent then
+					useCat(cat)
 					pcall(tintMesh, w, colorFor(w))
 				end
 			end
@@ -963,7 +977,6 @@ function tintMesh(mp, color)
 		end
 		removeOverlay(mp)
 		if entry and entry.state == "working" then
-			-- NO flat colour: keep whatever texture is showing now and swap the moment this one is ready
 			entry.waiters[mp] = true
 			if not applied[mp] then hideSurfaces(mp) end
 			setNote("Building the " .. style .. " texture...")
@@ -985,9 +998,9 @@ function tintMesh(mp, color)
 	end
 end
 
--- builds every texture style for the gun in the background, so picking a scope is instant
-local function prebuildTextures(tool)
-	for _, d in ipairs(tool:GetDescendants()) do
+-- builds every texture style for the object in the background, so picking a style is instant
+local function prebuildTextures(root)
+	for _, d in ipairs(partsUnder(root)) do
 		if d:IsA("MeshPart") then
 			local ok, tex = pcall(function() return d.TextureID end)
 			if ok and type(tex) == "string" and tex ~= "" then
@@ -1003,7 +1016,11 @@ local function watchTexture(mp)
 	if texWatched[mp] then return end
 	texWatched[mp] = true
 	connect(mp:GetPropertyChangedSignal("TextureID"), function()
-		if selected then tintMesh(mp, colorFor(mp)) end
+		local cat = instCat[mp]
+		if cat and cat.sel then
+			useCat(cat)
+			tintMesh(mp, colorFor(mp))
+		end
 	end)
 end
 
@@ -1020,6 +1037,7 @@ local function removeTrail(tool)
 		end
 		trails[tool] = nil
 	end
+	trailOwner[tool] = nil
 end
 
 local function trailColorSeq()
@@ -1089,7 +1107,7 @@ local function findTip(allParts, gripPos)
 
 	local markerPart, markerPos = findMuzzle(allParts)
 	if markerPart then
-		return markerPart, markerPos, Vector3.new(TRAIL_WIDTH / 2, 0, 0), "the gun's muzzle point"
+		return markerPart, markerPos, Vector3.new(TRAIL_WIDTH / 2, 0, 0), "the muzzle point"
 	end
 
 	if gripPos then
@@ -1194,7 +1212,7 @@ local function learnTip(beam)
 		end
 	end
 	if not bestWorld or bestDist > 12 then return false end
-	for tool in pairs(hooked) do
+	for tool in pairs(GUN.hooked) do
 		if tool.Parent and tool.Parent == LocalPlayer.Character then
 			local nearest, nearestD
 			for _, p in ipairs(partsUnder(tool)) do
@@ -1251,7 +1269,7 @@ local function buildTrail(tool, allParts, gripPos)
 end
 
 local function glassWanted()
-	return glassOverlay or (selected ~= nil and (selected.mode == "glass" or selected.forceGlass == true))
+	return (cur ~= nil and cur.glass) or (selected ~= nil and (selected.mode == "glass" or selected.forceGlass == true))
 end
 
 local function glassify(inst)
@@ -1264,7 +1282,10 @@ local function applyGlass(inst)
 	if not glassGuarded[inst] then
 		glassGuarded[inst] = true
 		connect(inst:GetPropertyChangedSignal("Transparency"), function()
-			if not unglassing and glassWanted() and inst.Transparency < glassT() - 0.01 then
+			local cat = instCat[inst]
+			if not cat or unglassing then return end
+			useCat(cat)
+			if glassWanted() and inst.Transparency < glassT() - 0.01 then
 				glassify(inst)
 			end
 		end)
@@ -1276,53 +1297,71 @@ local function applyGlass(inst)
 	end
 end
 
-local function unglassAll()
+local function unglassCat(cat)
 	unglassing = true
 	for inst in pairs(glassed) do
-		local saved = originals[inst]
-		if saved then
-			pcall(function()
-				if saved.Transparency ~= nil and inst.Transparency < 0.95 then
-					inst.Transparency = saved.Transparency
-				end
-				if saved.Material ~= nil then inst.Material = saved.Material end
-			end)
-			saved.Transparency = nil
-			saved.Material = nil
+		if instCat[inst] == cat then
+			local saved = originals[inst]
+			if saved then
+				pcall(function()
+					if saved.Transparency ~= nil and inst.Transparency < 0.95 then
+						inst.Transparency = saved.Transparency
+					end
+					if saved.Material ~= nil then inst.Material = saved.Material end
+				end)
+				saved.Transparency = nil
+				saved.Material = nil
+			end
+			glassed[inst] = nil
 		end
-		glassed[inst] = nil
 	end
 	unglassing = false
 end
 
-local function restoreAll()
-	unglassAll()
-	for tool in pairs(trails) do removeTrail(tool) end
-	for part in pairs(sheens) do removeSheen(part) end
-	for mp in pairs(chromed) do chromed[mp] = nil end
+-- puts everything of ONE category back to how the game made it
+local function restoreCat(cat)
+	unglassCat(cat)
+	for key, owner in pairs(trailOwner) do
+		if owner == cat then removeTrail(key) end
+	end
+	for part in pairs(sheens) do
+		if instCat[part] == cat then removeSheen(part) end
+	end
+	for mp in pairs(chromed) do
+		if instCat[mp] == cat then chromed[mp] = nil end
+	end
 	for inst, saved in pairs(originals) do
-		for prop, v in pairs(saved) do
-			pcall(function() inst[prop] = v end)
+		if instCat[inst] == cat then
+			for prop, v in pairs(saved) do
+				pcall(function() inst[prop] = v end)
+			end
+			originals[inst] = nil
 		end
 	end
-	for k in pairs(originals) do
-		originals[k] = nil
+	for mp in pairs(overlays) do
+		if instCat[mp] == cat then removeOverlay(mp) end
 	end
-	for mp in pairs(overlays) do removeOverlay(mp) end
-	for mp in pairs(applied) do applied[mp] = nil end
+	for mp in pairs(applied) do
+		if instCat[mp] == cat then applied[mp] = nil end
+	end
 	for mp, cache in pairs(saCache) do
-		for _, o in pairs(cache) do
-			pcall(function() o:Destroy() end)
+		if instCat[mp] == cat then
+			for _, o in pairs(cache) do
+				pcall(function() o:Destroy() end)
+			end
+			saCache[mp] = nil
 		end
-		saCache[mp] = nil
 	end
 	for mp, sa in pairs(surfaces) do
-		pcall(function() sa:Destroy() end)
-		surfaces[mp] = nil
+		if instCat[mp] == cat then
+			pcall(function() sa:Destroy() end)
+			surfaces[mp] = nil
+		end
 	end
 end
 
 local function paint(inst, color, isShot)
+	instCat[inst] = cur
 	if inst:IsA("MeshPart") and not isShot then
 		-- texture styles paint the whole look themselves, so the part itself must not add a colour tint on top
 		local c = (selected and selected.mode == "texture") and Color3.new(1, 1, 1) or color
@@ -1391,7 +1430,9 @@ local function guardEffect(inst)
 	if inst.Name == "VSTrail" then return end
 	guarded[inst] = true
 	connect(inst:GetPropertyChangedSignal("Color"), function()
-		if not selected then return end
+		local cat = instCat[inst]
+		if not (cat and cat.sel) then return end
+		useCat(cat)
 		local fine
 		if selected.mode == "rainbow" or selected.rainbowFx then
 			fine = #inst.Color.Keypoints == #RAINBOW_SEQUENCE.Keypoints
@@ -1406,11 +1447,13 @@ local function guardEffect(inst)
 	end)
 end
 
-local function paintGun(tool)
+-- paints one object (a gun, a knife, a bomb...) and everything inside it. Call useCat first.
+local function paintRoot(root)
 	if not selected then return 0 end
-	local ref = mapRainbow(partsUnder(tool))
+	local ref = mapRainbow(partsUnder(root))
 	local effects = 0
-	for _, d in ipairs(tool:GetDescendants()) do
+	paint(root, colorFor(root), false)
+	for _, d in ipairs(root:GetDescendants()) do
 		if paint(d, colorFor(d), false) and isEffect(d) then
 			effects += 1
 		end
@@ -1420,9 +1463,9 @@ local function paintGun(tool)
 	return effects
 end
 
-local function gunAssetIds()
+local function gunAssetIds(cat)
 	local ids = {}
-	for tool in pairs(hooked) do
+	for tool in pairs(cat.hooked) do
 		for _, d in ipairs(tool:GetDescendants()) do
 			if d:IsA("MeshPart") then
 				local okt, tex = pcall(function() return d.TextureID end)
@@ -1435,8 +1478,8 @@ local function gunAssetIds()
 	return ids
 end
 
-local function hipTarget(char)
-	local ref = char:FindFirstChild("DisplayRefGun")
+local function hipTarget(char, refName)
+	local ref = char:FindFirstChild(refName)
 	if not (ref and ref:IsA("ObjectValue")) then return nil end
 	local t = ref.Value
 	if not t then return nil end
@@ -1445,21 +1488,23 @@ local function hipTarget(char)
 	return t
 end
 
-local function watchTarget(target)
+local function watchTarget(target, cat)
 	if watchedTargets[target] then return end
 	watchedTargets[target] = true
 	connect(target.DescendantAdded, function(d)
 		task.defer(function()
-			if selected and d.Parent then
+			if cat.sel and d.Parent then
+				useCat(cat)
 				paint(d, colorFor(d), false)
 			end
 		end)
 	end)
 end
 
-local function paintHip()
+local function paintHip(cat)
 	local char = LocalPlayer.Character
-	if not (selected and char) then return 0 end
+	if not (cat.sel and char) then return 0 end
+	useCat(cat)
 	local done, count = {}, 0
 	local function paintOne(d)
 		if done[d] then return end
@@ -1468,9 +1513,9 @@ local function paintHip()
 			count += 1
 		end
 	end
-	local target = hipTarget(char)
+	local target = hipTarget(char, cat.refName)
 	if target then
-		watchTarget(target)
+		watchTarget(target, cat)
 		local targetRef = mapRainbow(partsUnder(target))
 		paintOne(target)
 		for _, d in ipairs(target:GetDescendants()) do
@@ -1478,7 +1523,7 @@ local function paintHip()
 		end
 		if targetRef and wantsSheen() then addSheen(targetRef) end
 	end
-	local ids = gunAssetIds()
+	local ids = gunAssetIds(cat)
 	local matched = {}
 	for _, d in ipairs(char:GetDescendants()) do
 		if d:IsA("MeshPart") and not done[d] and not d:FindFirstAncestorOfClass("Tool") then
@@ -1497,13 +1542,13 @@ local function paintHip()
 	return count
 end
 
-local function hipGroups()
+local function hipGroups(cat)
 	local groups = {}
 	local char = LocalPlayer.Character
 	if not char then return groups end
-	local target = hipTarget(char)
+	local target = hipTarget(char, cat.refName)
 	if target then groups["HIPTARGET"] = partsUnder(target) end
-	local ids = gunAssetIds()
+	local ids = gunAssetIds(cat)
 	local matched = {}
 	for _, d in ipairs(char:GetDescendants()) do
 		if d:IsA("MeshPart") and not d:FindFirstAncestorOfClass("Tool") and not (target and d:IsDescendantOf(target)) then
@@ -1518,7 +1563,7 @@ local function hipGroups()
 	return groups
 end
 
-local function ensureTrail(key, getParts, gripFn)
+local function ensureTrail(cat, key, getParts, gripFn)
 	local made = trails[key]
 	if made and made.trail and made.trail.Parent then
 		trailLook(made.trail)
@@ -1529,77 +1574,90 @@ local function ensureTrail(key, getParts, gripFn)
 		buildTrail(key, parts, gripFn and gripFn(parts) or nil)
 	end)
 	if not ok then warn("[Voidscope Recolor] trail failed: " .. tostring(err)) end
+	if trails[key] then trailOwner[key] = cat end
 end
 
-local function refreshTrails()
-	if not (trailOn and selected) then
-		for key in pairs(trails) do removeTrail(key) end
+local function refreshTrails(cat)
+	if not cat.trailable then return end
+	useCat(cat)
+	if not (cat.trail and cat.sel) then
+		for key, owner in pairs(trailOwner) do
+			if owner == cat then removeTrail(key) end
+		end
 		return
 	end
-	for tool in pairs(hooked) do
+	for tool in pairs(cat.hooked) do
 		if tool.Parent and tool.Parent == LocalPlayer.Character then
-			ensureTrail(tool, function() return partsUnder(tool) end, handPosition)
+			ensureTrail(cat, tool, function() return partsUnder(tool) end, handPosition)
 		else
 			removeTrail(tool)
 		end
 	end
-	for key, parts in pairs(hipGroups()) do
-		ensureTrail(key, function() return parts end, handleGrip)
+	for key, parts in pairs(hipGroups(cat)) do
+		ensureTrail(cat, cat.key .. ":" .. key, function() return parts end, handleGrip)
 	end
 end
 
 local lastTrailCheck = 0
 connect(RunService.Heartbeat, function()
-	if not (trailOn and selected) then return end
 	local now = os.clock()
 	if now - lastTrailCheck < 1.5 then return end
 	lastTrailCheck = now
-	refreshTrails()
+	for _, cat in ipairs(CAT_LIST) do
+		if cat.trailable and cat.trail and cat.sel then
+			refreshTrails(cat)
+		end
+	end
 end)
 
-local function refreshHip()
-	if not selected then return end
-	local n = paintHip()
-	if n > 0 then
-		setHipStatus("Hip gun: recoloured (" .. n .. " part(s))")
-	else
-		setHipStatus("Hip gun: not seen yet (put the gun away)")
-	end
+local function refreshHip(cat)
+	if cat.kind ~= "tool" or not cat.sel then return end
+	paintHip(cat)
 end
 
-local function queueHipRefresh()
-	if hipQueued then return end
-	hipQueued = true
+local function queueHipRefresh(cat)
+	if cat.hipQueued then return end
+	cat.hipQueued = true
 	task.defer(function()
-		hipQueued = false
-		refreshHip()
+		cat.hipQueued = false
+		refreshHip(cat)
 	end)
 end
 
-local function hookRef(ref)
+local function hookRef(ref, cat)
 	if guarded[ref] then return end
 	guarded[ref] = true
-	connect(ref:GetPropertyChangedSignal("Value"), queueHipRefresh)
+	connect(ref:GetPropertyChangedSignal("Value"), function() queueHipRefresh(cat) end)
 end
 
 local function watchCharacter(char)
 	if not char then return end
 	connect(char.DescendantAdded, function(d)
-		if d.Name == "DisplayRefGun" and d:IsA("ObjectValue") then
-			hookRef(d)
-			queueHipRefresh()
-		elseif selected and d:IsA("MeshPart") then
-			queueHipRefresh()
+		for _, cat in ipairs(CAT_LIST) do
+			if cat.kind == "tool" then
+				if d.Name == cat.refName and d:IsA("ObjectValue") then
+					hookRef(d, cat)
+					queueHipRefresh(cat)
+				elseif cat.sel and d:IsA("MeshPart") then
+					queueHipRefresh(cat)
+				end
+			end
 		end
 	end)
-	local ref = char:FindFirstChild("DisplayRefGun")
-	if ref and ref:IsA("ObjectValue") then hookRef(ref) end
+	for _, cat in ipairs(CAT_LIST) do
+		if cat.kind == "tool" then
+			local ref = char:FindFirstChild(cat.refName)
+			if ref and ref:IsA("ObjectValue") then hookRef(ref, cat) end
+		end
+	end
 end
 
-local function isGun(inst)
-	if not inst:IsA("Tool") then return false end
+local function toolCat(inst)
+	if not inst:IsA("Tool") then return nil end
 	local n = string.lower(inst.Name)
-	return n == "gun" or string.find(n, "voidscope", 1, true) ~= nil
+	if n == "gun" or string.find(n, "voidscope", 1, true) ~= nil then return GUN end
+	if nameHas(n, KNIFE_NAMES) then return KNIFE end
+	return nil
 end
 
 local function openShotWindow()
@@ -1607,7 +1665,7 @@ local function openShotWindow()
 	if now > shotUntil then shotCount = 0 end
 	shotUntil = now + SHOT_WINDOW
 	task.delay(SHOT_WINDOW + 0.2, function()
-		if selected and os.clock() >= shotUntil then
+		if GUN.sel and os.clock() >= shotUntil then
 			setNote("Last shot: " .. shotCount .. " extra effect(s) recoloured")
 		end
 	end)
@@ -1623,58 +1681,65 @@ local function watchSound(inst)
 	end
 end
 
-local function hookGun(tool)
-	if hooked[tool] then return end
-	hooked[tool] = true
-	print("[Voidscope Recolor] found gun: " .. tool:GetFullName())
+local function hookTool(cat, tool)
+	if cat.hooked[tool] then return end
+	cat.hooked[tool] = true
+	instCat[tool] = cat
+	print("[Voidscope Recolor] found " .. cat.title .. ": " .. tool:GetFullName())
 	task.delay(PREBUILD_DELAY, prebuildTextures, tool) -- builds all texture styles quietly in the background
-	local effects = paintGun(tool)
-	if selected then
-		setGunStatus("Gun: found, " .. effects .. " beam part(s)")
-		refreshHip()
-	else
-		setGunStatus("Gun: found")
+	if cat.sel then
+		useCat(cat)
+		paintRoot(tool)
+		refreshHip(cat)
 	end
-	for _, d in ipairs(tool:GetDescendants()) do
-		watchSound(d)
+	if cat == GUN then
+		for _, d in ipairs(tool:GetDescendants()) do
+			watchSound(d)
+		end
 	end
 	connect(tool.DescendantAdded, function(d)
 		guardEffect(d)
-		watchSound(d)
+		if cat == GUN then watchSound(d) end
 		task.defer(function()
-			if selected and d.Parent then
+			if cat.sel and d.Parent then
+				useCat(cat)
 				paint(d, colorFor(d), false)
 			end
 		end)
 	end)
-	connect(tool.Activated, openShotWindow)
+	if cat == GUN then connect(tool.Activated, openShotWindow) end
 	connect(tool.Equipped, function()
 		task.delay(0.3, function()
-			if selected then paintGun(tool) end
-			if trailOn and selected then refreshTrails() end
+			if cat.sel then
+				useCat(cat)
+				paintRoot(tool)
+			end
+			refreshTrails(cat)
 		end)
 	end)
 	connect(tool.Unequipped, function()
 		removeTrail(tool)
 		task.delay(0.3, function()
-			if selected then
-				refreshHip()
-				refreshTrails()
+			if cat.sel then
+				refreshHip(cat)
+				refreshTrails(cat)
 			end
 		end)
 	end)
-	if trailOn and selected and tool.Parent == LocalPlayer.Character then
-		task.delay(0.3, refreshTrails)
+	if cat.trail and cat.sel and tool.Parent == LocalPlayer.Character then
+		task.delay(0.3, function() refreshTrails(cat) end)
 	end
 end
 
 local function scan(container)
 	if not container then return end
 	for _, child in ipairs(container:GetChildren()) do
-		if isGun(child) then hookGun(child) end
+		local cat = toolCat(child)
+		if cat then hookTool(cat, child) end
 	end
 	connect(container.ChildAdded, function(child)
-		if isGun(child) then hookGun(child) end
+		local cat = toolCat(child)
+		if cat then hookTool(cat, child) end
 	end)
 end
 
@@ -1694,7 +1759,7 @@ connect(UserInputService.InputBegan, function(input, processed)
 		local char = LocalPlayer.Character
 		if char then
 			for _, child in ipairs(char:GetChildren()) do
-				if isGun(child) then
+				if toolCat(child) == GUN then
 					openShotWindow()
 					break
 				end
@@ -1739,8 +1804,9 @@ local function nearYou(d)
 	return false
 end
 
+-- gun shots (beams / flashes) get recoloured with the gun's colour
 connect(Workspace.DescendantAdded, function(d)
-	if not selected then return end
+	if not GUN.sel then return end
 	if os.clock() > shotUntil then return end
 	local char = characterOf(d)
 	if char then
@@ -1748,15 +1814,17 @@ connect(Workspace.DescendantAdded, function(d)
 		if not (isEffect(d) or d:IsA("Light")) then return end
 	end
 	task.defer(function()
-		if not d.Parent or not selected then return end
+		if not d.Parent or not GUN.sel then return end
 		if not nearYou(d) then return end
+		useCat(GUN)
 		if d:IsA("Beam") then
 			local function learn()
-				if learnTip(d) and trailOn then refreshTrails() end
+				if learnTip(d) and GUN.trail then refreshTrails(GUN) end
 			end
 			learn()
 			task.delay(0.05, learn)
 		end
+		useCat(GUN)
 		if paint(d, colorFor(d), true) then
 			guardEffect(d)
 			shotCount += 1
@@ -1764,85 +1832,177 @@ connect(Workspace.DescendantAdded, function(d)
 	end)
 end)
 
-local function updateStatus()
-	if glassToggleBtn then
-		glassToggleBtn.Text = glassOverlay and "SEE-THROUGH: ON" or "SEE-THROUGH: OFF"
+-- ============================================================
+-- BOMB EMOTES (gold bomb / prank bomb): found by name, painted as soon as they appear
+-- ============================================================
+local function bombMatch(cat, inst)
+	if not (inst:IsA("Model") or inst:IsA("Tool") or inst:IsA("Accessory") or inst:IsA("BasePart")) then return false end
+	local n = string.lower(inst.Name)
+	for _, w in ipairs(cat.words) do
+		if not string.find(n, w, 1, true) then return false end
 	end
-	if glassToggleBg then
-		glassToggleBg.BackgroundColor3 = glassOverlay and Color3.fromRGB(0, 105, 190) or Color3.fromRGB(78, 80, 92)
+	return true
+end
+
+local function posOf(d)
+	if d:IsA("BasePart") then return d.Position end
+	if d:IsA("Model") then
+		local ok, cf = pcall(function() return d:GetPivot() end)
+		if ok then return cf.Position end
 	end
-	if trailToggleBtn then
-		trailToggleBtn.Text = trailOn and "TRAIL: ON" or "TRAIL: OFF"
+	local p = d:FindFirstChildWhichIsA("BasePart", true)
+	return p and p.Position or nil
+end
+
+local function hookBomb(cat, root)
+	if cat.hooked[root] then return end
+	local p = root.Parent
+	while p do
+		if cat.hooked[p] then return end
+		p = p.Parent
 	end
-	if trailToggleBg then
-		trailToggleBg.BackgroundColor3 = trailOn and Color3.fromRGB(0, 105, 190) or Color3.fromRGB(78, 80, 92)
+	cat.hooked[root] = true
+	instCat[root] = cat
+	print("[Voidscope Recolor] found " .. cat.title .. ": " .. root:GetFullName())
+	task.defer(prebuildTextures, root)
+	if cat.sel then
+		useCat(cat)
+		paintRoot(root)
 	end
-	if statusLabel then
-		statusLabel.Text = selected and ("Selected: " .. selected.name) or "Selected: Default"
-	end
-	for name, bg in pairs(buttons) do
-		local stroke = bg:FindFirstChildOfClass("UIStroke")
-		if stroke then
-			local on = (selected ~= nil and selected.name == name)
-			stroke.Color = on and BUTTON_SELECTED or BUTTON_OUTLINE
-			stroke.Thickness = on and 2.5 or 1
-			stroke.Transparency = on and 0 or 0.45
+	connect(root.DescendantAdded, function(d)
+		guardEffect(d)
+		task.defer(function()
+			if cat.sel and d.Parent then
+				useCat(cat)
+				paint(d, colorFor(d), false)
+			end
+		end)
+	end)
+end
+
+local function considerBomb(d)
+	if not d.Parent then return end
+	for _, cat in ipairs(CAT_LIST) do
+		if cat.kind == "bomb" and bombMatch(cat, d) then
+			local char = characterOf(d)
+			if char and char ~= LocalPlayer.Character then return end
+			if not char then
+				local pos = posOf(d)
+				local mychar = LocalPlayer.Character
+				local root = mychar and mychar:FindFirstChild("HumanoidRootPart")
+				if not pos or (root and (pos - root.Position).Magnitude > BOMB_RADIUS) then return end
+			end
+			hookBomb(cat, d)
 		end
 	end
 end
 
-local function applyColor(entry)
-	selected = entry
-	if not glassWanted() then unglassAll() end
-	for part in pairs(sheens) do removeSheen(part) end
-	local found, effects = 0, 0
-	for tool in pairs(hooked) do
-		if tool.Parent then
+connect(Workspace.DescendantAdded, function(d)
+	if not (d:IsA("Model") or d:IsA("Tool") or d:IsA("Accessory") or d:IsA("BasePart")) then return end
+	local n = string.lower(d.Name)
+	if string.find(n, "bomb", 1, true) then
+		task.delay(0.15, considerBomb, d)
+	end
+end)
+task.spawn(function()
+	local n = 0
+	for _, d in ipairs(Workspace:GetDescendants()) do
+		if string.find(string.lower(d.Name), "bomb", 1, true) then
+			pcall(considerBomb, d)
+		end
+		n += 1
+		if n % 500 == 0 then task.wait() end
+	end
+end)
+
+local updateStatus
+
+local function applyColor(cat, entry)
+	cat.sel = entry
+	useCat(cat)
+	if not glassWanted() then unglassCat(cat) end
+	for part in pairs(sheens) do
+		if instCat[part] == cat then removeSheen(part) end
+	end
+	local found = 0
+	for root in pairs(cat.hooked) do
+		if root.Parent then
 			found += 1
-			effects += paintGun(tool)
+			paintRoot(root)
 		end
 	end
 	if found == 0 then
-		setGunStatus("Gun: not found yet (equip it)")
-	else
-		setGunStatus("Gun: found, " .. effects .. " beam part(s)")
-		if not (selected and selected.mode == "texture") then setNote("") end
+		setNote(cat.missing)
+	elseif not (entry and entry.mode == "texture") then
+		setNote("")
 	end
-	refreshHip()
-	refreshTrails()
+	refreshHip(cat)
+	refreshTrails(cat)
 	updateStatus()
 end
 
-local function resetColor()
-	selected = nil
-	glassOverlay = false
-	trailOn = false
-	restoreAll()
+local function resetCat(cat)
+	cat.sel = nil
+	cat.glass = false
+	cat.trail = false
+	useCat(cat)
+	restoreCat(cat)
 	setNote("")
-	setHipStatus("Hip gun: pick a colour first")
 	updateStatus()
+end
+
+function updateStatus()
+	for _, cat in ipairs(CAT_LIST) do
+		local ui = cat.ui
+		if ui.glassBtn then
+			ui.glassBtn.Text = cat.glass and "SEE-THROUGH: ON" or "SEE-THROUGH: OFF"
+			ui.glassBg.BackgroundColor3 = cat.glass and Color3.fromRGB(0, 105, 190) or Color3.fromRGB(78, 80, 92)
+		end
+		if ui.trailBtn then
+			ui.trailBtn.Text = cat.trail and "TRAIL: ON" or "TRAIL: OFF"
+			ui.trailBg.BackgroundColor3 = cat.trail and Color3.fromRGB(0, 105, 190) or Color3.fromRGB(78, 80, 92)
+		end
+		for name, bg in pairs(ui.buttons) do
+			local stroke = bg:FindFirstChildOfClass("UIStroke")
+			if stroke then
+				local on = (cat.sel ~= nil and cat.sel.name == name)
+				stroke.Color = on and BUTTON_SELECTED or BUTTON_OUTLINE
+				stroke.Thickness = on and 2.5 or 1
+				stroke.Transparency = on and 0 or 0.45
+			end
+		end
+	end
 end
 
 -- ============================================================
--- SHADERS: glossy lighting look (client side only)
--- bloom glow + sharp environment reflections + colour grading + optional shiny surfaces
+-- SHADERS: very glossy, mirror-like look (client side only)
+-- bloom glow + full-strength environment reflections + colour grading + mirror-shiny surfaces
 -- ============================================================
 local Lighting = game:GetService("Lighting")
 local shaderOn = false
 local shaderPreset = "Glossy"
-local glossLevel = 3           -- 1..5, higher = glossier
-local shinySurfaces = true     -- adds a shine (Reflectance) to map parts, can cost some FPS on huge maps
+local glossLevel = 5           -- 1..5, higher = glossier (5 = mirror)
+local shinySurfaces = true     -- adds a mirror shine (Reflectance) to map parts, can cost some FPS on huge maps
+local mirrorMode = true        -- also switches plain materials to polished metal so they really reflect
 local shaderFx = {}
 local lightingSaved = nil
 local reflSaved = setmetatable({}, { __mode = "k" })
+local matSaved = setmetatable({}, { __mode = "k" })
 local shinyRun = 0
 local shinyConn = nil
 local shaderUIRefresh = nil
 local lastShaderCheck = 0
 
+local MIRROR_MATS = {}
+for _, name in ipairs({ "Plastic", "SmoothPlastic", "Concrete", "Brick", "Cobblestone", "Wood", "WoodPlanks",
+	"Slate", "Marble", "Granite", "Pebble", "Fabric", "Limestone", "Asphalt", "Pavement", "Sandstone", "Basalt" }) do
+	local ok, mat = pcall(function() return Enum.Material[name] end)
+	if ok and mat then MIRROR_MATS[mat] = true end
+end
+
 local SHADER_ORDER = { "Glossy", "Warm", "Cool", "Neon" }
 local SHADER_PRESETS = {
-	Glossy = { tint = Color3.fromRGB(255, 252, 255), sat = 0.22, contrast = 0.16, bright = 0.01, threshold = 0.8,
+	Glossy = { tint = Color3.fromRGB(255, 252, 255), sat = 0.22, contrast = 0.2, bright = 0.01, threshold = 0.75,
 		ambient = Color3.fromRGB(78, 82, 100), outdoor = Color3.fromRGB(120, 126, 150),
 		top = Color3.fromRGB(255, 246, 235), bottom = Color3.fromRGB(130, 160, 215) },
 	Warm = { tint = Color3.fromRGB(255, 238, 215), sat = 0.25, contrast = 0.14, bright = 0.02, threshold = 0.8,
@@ -1903,9 +2063,13 @@ local function shinyOne(part)
 	if not part.Parent then return end
 	local okT, target = pcall(shinyTarget, part)
 	if not (okT and target) then return end
-	local want = math.clamp(glossLevel * 0.06, 0.06, 0.3)
+	local want = math.clamp(0.1 + glossLevel * 0.15, 0.1, 0.9)
 	if reflSaved[part] == nil then reflSaved[part] = part.Reflectance end
 	pcall(function() part.Reflectance = math.max(reflSaved[part], want) end)
+	if mirrorMode and MIRROR_MATS[part.Material] then
+		if matSaved[part] == nil then matSaved[part] = part.Material end
+		pcall(function() part.Material = Enum.Material.Metal end)
+	end
 end
 
 local function stopShiny()
@@ -1917,6 +2081,10 @@ local function stopShiny()
 	for part, original in pairs(reflSaved) do
 		pcall(function() part.Reflectance = original end)
 		reflSaved[part] = nil
+	end
+	for part, original in pairs(matSaved) do
+		pcall(function() part.Material = original end)
+		matSaved[part] = nil
 	end
 end
 
@@ -1966,15 +2134,15 @@ local function applyLook()
 	local k = lvl / 3
 	local base = lightingSaved or {}
 
-	-- sharp, strong reflections of the sky on everything
-	setLighting("EnvironmentSpecularScale", math.clamp(0.4 + lvl * 0.15, 0, 1))
-	setLighting("EnvironmentDiffuseScale", 0.55)
+	-- full-strength, razor sharp reflections of the sky on everything (mirror look)
+	setLighting("EnvironmentSpecularScale", 1)
+	setLighting("EnvironmentDiffuseScale", lvl >= 4 and 0.35 or 0.55)
 	setLighting("ExposureCompensation", (base.ExposureCompensation or 0) + 0.12 * k)
 	setLighting("Ambient", p.ambient)
 	setLighting("OutdoorAmbient", p.outdoor)
 	setLighting("ColorShift_Top", p.top)
 	setLighting("ColorShift_Bottom", p.bottom)
-	setLighting("ShadowSoftness", 0.15)
+	setLighting("ShadowSoftness", 0.1)
 
 	-- rich, punchy colours
 	setProps(getFx("ColorCorrectionEffect", "Color"), {
@@ -1982,7 +2150,7 @@ local function applyLook()
 	})
 	-- the glossy glow on bright spots
 	setProps(getFx("BloomEffect", "Bloom"), {
-		Intensity = 0.3 + 0.3 * lvl, Size = 22 + 5 * lvl, Threshold = p.threshold,
+		Intensity = 0.3 + 0.35 * lvl, Size = 22 + 6 * lvl, Threshold = p.threshold,
 	})
 	-- light shafts from the sun / bright lights
 	setProps(getFx("SunRaysEffect", "Rays"), {
@@ -2082,7 +2250,9 @@ local function buildGui()
 		gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 	end
 
-	local WIDTH = 290
+	local WIDTH = 410
+	local BODY_H = 310
+	local SIDE_W = 92
 
 	local function photoText(b, size)
 		b.Font = BUBBLY_FONT
@@ -2111,6 +2281,8 @@ local function buildGui()
 		ColorSequenceKeypoint.new(0.52, Color3.fromRGB(75, 75, 84)),
 		ColorSequenceKeypoint.new(1, Color3.fromRGB(135, 135, 144)),
 	})
+	local GRAY = Color3.fromRGB(78, 80, 92)
+	local ON_BLUE = Color3.fromRGB(0, 105, 190)
 
 	local function makeGlassButton(parent, order, text, fillColor, fillGradient, onClick, transparency)
 		local holder = Instance.new("Frame")
@@ -2238,15 +2410,10 @@ local function buildGui()
 	connect(content:GetPropertyChangedSignal("AbsoluteSize"), syncHeight)
 	task.defer(syncHeight)
 
-	local order = 0
-	local function nextOrder()
-		order += 1
-		return order
-	end
-
+	-- ===== HEADER =====
 	local header = Instance.new("Frame")
 	header.Name = "Header"
-	header.LayoutOrder = nextOrder()
+	header.LayoutOrder = 1
 	header.Size = UDim2.new(1, 0, 0, 30)
 	header.BackgroundTransparency = 1
 	header.Parent = content
@@ -2289,12 +2456,107 @@ local function buildGui()
 	local minBtn = headerButton("-", -34, Color3.fromRGB(38, 40, 54))
 	local closeBtn = headerButton("X", 0, Color3.fromRGB(125, 30, 30))
 
-	local function featureRow()
+	-- ===== BODY: tabs on the LEFT, a divider line, pages on the right =====
+	local body = Instance.new("Frame")
+	body.Name = "Body"
+	body.LayoutOrder = 2
+	body.Size = UDim2.new(1, 0, 0, BODY_H)
+	body.BackgroundTransparency = 1
+	body.Parent = content
+
+	local sidebar = Instance.new("Frame")
+	sidebar.Name = "Tabs"
+	sidebar.Size = UDim2.new(0, SIDE_W, 1, 0)
+	sidebar.BackgroundTransparency = 1
+	sidebar.Parent = body
+	local sideList = Instance.new("UIListLayout")
+	sideList.Padding = UDim.new(0, 6)
+	sideList.SortOrder = Enum.SortOrder.LayoutOrder
+	sideList.Parent = sidebar
+
+	local divider = Instance.new("Frame")
+	divider.Name = "Divider"
+	divider.Position = UDim2.new(0, SIDE_W + 4, 0, 0)
+	divider.Size = UDim2.new(0, 2, 1, 0)
+	divider.BackgroundColor3 = BUTTON_OUTLINE
+	divider.BackgroundTransparency = 0.25
+	divider.BorderSizePixel = 0
+	divider.Parent = body
+	Instance.new("UICorner", divider).CornerRadius = UDim.new(0, 2)
+
+	local pages = {}
+	local tabBgs = {}
+
+	local function newPage(name)
+		local sf = Instance.new("ScrollingFrame")
+		sf.Name = name
+		sf.Position = UDim2.new(0, SIDE_W + 12, 0, 0)
+		sf.Size = UDim2.new(1, -(SIDE_W + 12), 1, 0)
+		sf.BackgroundColor3 = Color3.new(0, 0, 0)
+		sf.BackgroundTransparency = 0.3
+		sf.BorderSizePixel = 0
+		sf.CanvasSize = UDim2.new(0, 0, 0, 0)
+		sf.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		sf.ScrollingDirection = Enum.ScrollingDirection.Y
+		sf.ScrollBarThickness = 4
+		sf.ScrollBarImageColor3 = Color3.fromRGB(150, 154, 170)
+		sf.Visible = false
+		sf.Parent = body
+		Instance.new("UICorner", sf).CornerRadius = UDim.new(0, 10)
+		local st = Instance.new("UIStroke")
+		st.Color = BUTTON_OUTLINE
+		st.Thickness = 1
+		st.Transparency = 0.5
+		st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		st.Parent = sf
+		local sp = Instance.new("UIPadding", sf)
+		sp.PaddingTop = UDim.new(0, 6)
+		sp.PaddingBottom = UDim.new(0, 6)
+		sp.PaddingLeft = UDim.new(0, 6)
+		sp.PaddingRight = UDim.new(0, 10)
+		local sl = Instance.new("UIListLayout", sf)
+		sl.Padding = UDim.new(0, 6)
+		sl.SortOrder = Enum.SortOrder.LayoutOrder
+		local page = { frame = sf, n = 0 }
+		function page.next()
+			page.n += 1
+			return page.n
+		end
+		pages[name] = page
+		return page
+	end
+
+	local function setTab(name)
+		for pageName, page in pairs(pages) do
+			page.frame.Visible = (pageName == name)
+		end
+		for tabName, bg in pairs(tabBgs) do
+			local stroke = bg:FindFirstChildOfClass("UIStroke")
+			if stroke then
+				local on = (tabName == name)
+				stroke.Color = on and BUTTON_SELECTED or BUTTON_OUTLINE
+				stroke.Thickness = on and 2.5 or 1
+				stroke.Transparency = on and 0 or 0.45
+			end
+		end
+	end
+
+	local tabOrder = 0
+	local function makeTab(name, text)
+		tabOrder += 1
+		local bg, _, holder = makeGlassButton(sidebar, tabOrder, text, Color3.fromRGB(84, 84, 100), nil, function()
+			setTab(name)
+		end)
+		holder.Size = UDim2.new(1, 0, 0, 36)
+		tabBgs[name] = bg
+	end
+
+	local function featureRow(page)
 		local row = Instance.new("Frame")
-		row.LayoutOrder = nextOrder()
+		row.LayoutOrder = page.next()
 		row.Size = UDim2.new(1, 0, 0, 30)
 		row.BackgroundTransparency = 1
-		row.Parent = content
+		row.Parent = page.frame
 		local rl = Instance.new("UIListLayout")
 		rl.FillDirection = Enum.FillDirection.Horizontal
 		rl.Padding = UDim.new(0, 6)
@@ -2302,169 +2564,95 @@ local function buildGui()
 		rl.Parent = row
 		return row
 	end
-	local row1 = featureRow()
-	glassToggleBg, glassToggleBtn = (function()
-		local bg, tb, holder = makeGlassButton(row1, 1, "SEE-THROUGH: OFF", Color3.fromRGB(78, 80, 92), nil, function()
-			glassOverlay = not glassOverlay
-			if selected then
-				applyColor(selected)
-			else
+
+	local function sectionLabel(page, text)
+		local l = label(page.frame, page.next(), text, 14, Color3.new(1, 1, 1), 16)
+		l.Font = BUBBLY_FONT
+		l.TextXAlignment = Enum.TextXAlignment.Left
+		l.TextStrokeColor3 = Color3.new(0, 0, 0)
+		l.TextStrokeTransparency = 0.3
+		return l
+	end
+
+	-- builds a colour page for one category (gun / knife / gold bomb / prank bomb)
+	local function buildScopePage(page, cat, colorSuffix, specialSuffix, withTrail)
+		local ui = cat.ui
+		local row1 = featureRow(page)
+		do
+			local bg, tb, holder = makeGlassButton(row1, 1, "SEE-THROUGH: OFF", GRAY, nil, function()
+				cat.glass = not cat.glass
+				if cat.sel then applyColor(cat, cat.sel) else updateStatus() end
+			end)
+			holder.Size = withTrail and UDim2.new(0.5, -3, 1, 0) or UDim2.new(1, 0, 1, 0)
+			ui.glassBg, ui.glassBtn = bg, tb
+		end
+		if withTrail then
+			local bg, tb, holder = makeGlassButton(row1, 2, "TRAIL: OFF", GRAY, nil, function()
+				cat.trail = not cat.trail
+				if cat.trail and not cat.sel then
+					setNote("Pick a colour first, the trail follows it.")
+				elseif cat.trail then
+					setNote("")
+				end
+				refreshTrails(cat)
 				updateStatus()
-			end
-		end)
-		holder.Size = UDim2.new(0.5, -3, 1, 0)
-		return bg, tb
-	end)()
-	trailToggleBg, trailToggleBtn = (function()
-		local bg, tb, holder = makeGlassButton(row1, 2, "TRAIL: OFF", Color3.fromRGB(78, 80, 92), nil, function()
-			trailOn = not trailOn
-			if trailOn and not selected then
-				setNote("Pick a scope first, the trail follows it.")
-			elseif trailOn then
-				setNote("")
-			end
-			refreshTrails()
-			updateStatus()
-		end)
-		holder.Size = UDim2.new(0.5, -3, 1, 0)
-		return bg, tb
-	end)()
+			end)
+			holder.Size = UDim2.new(0.5, -3, 1, 0)
+			ui.trailBg, ui.trailBtn = bg, tb
+		end
 
-	local row2 = featureRow()
-	do
-		local bg, _, holder = makeGlassButton(row2, 1, string.upper(GLASS.name), Color3.fromRGB(100, 140, 170), nil,
-			function() applyColor(GLASS) end, 0.15)
-		holder.Size = UDim2.new(0.5, -3, 1, 0)
-		buttons[GLASS.name] = bg
-		local bg2, _, holder2 = makeGlassButton(row2, 2, string.upper(RAINBOW.name), Color3.new(1, 1, 1), RAINBOW_SEQUENCE,
-			function() applyColor(RAINBOW) end)
-		holder2.Size = UDim2.new(0.5, -3, 1, 0)
-		buttons[RAINBOW.name] = bg2
-	end
+		local row2 = featureRow(page)
+		do
+			local bg, _, holder = makeGlassButton(row2, 1, string.upper(GLASS.name) .. specialSuffix,
+				Color3.fromRGB(100, 140, 170), nil, function() applyColor(cat, GLASS) end, 0.15)
+			holder.Size = UDim2.new(0.5, -3, 1, 0)
+			ui.buttons[GLASS.name] = bg
+			local bg2, _, holder2 = makeGlassButton(row2, 2, string.upper(RAINBOW.name) .. specialSuffix,
+				Color3.new(1, 1, 1), RAINBOW_SEQUENCE, function() applyColor(cat, RAINBOW) end)
+			holder2.Size = UDim2.new(0.5, -3, 1, 0)
+			ui.buttons[RAINBOW.name] = bg2
+		end
 
-	local row3 = featureRow()
-	do
-		local _, _, holder = makeGlassButton(row3, 1, "RESET TO DEFAULT", Color3.fromRGB(84, 84, 100), nil, resetColor)
-		holder.Size = UDim2.new(1, 0, 1, 0)
-	end
+		local row3 = featureRow(page)
+		do
+			local _, _, holder = makeGlassButton(row3, 1, "RESET TO DEFAULT", Color3.fromRGB(84, 84, 100), nil,
+				function() resetCat(cat) end)
+			holder.Size = UDim2.new(1, 0, 1, 0)
+		end
 
-	local scopesLabel = label(content, nextOrder(), "SCOPES", 14, Color3.new(1, 1, 1), 16)
-	scopesLabel.Font = BUBBLY_FONT
-	scopesLabel.TextXAlignment = Enum.TextXAlignment.Left
-	scopesLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-	scopesLabel.TextStrokeTransparency = 0.3
+		sectionLabel(page, "COLOURS")
 
-	local scroll = Instance.new("ScrollingFrame")
-	scroll.Name = "Scopes"
-	scroll.LayoutOrder = nextOrder()
-	scroll.Size = UDim2.new(1, 0, 0, 175)
-	scroll.BackgroundColor3 = Color3.new(0, 0, 0)
-	scroll.BackgroundTransparency = 0.3
-	scroll.BorderSizePixel = 0
-	scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	scroll.ScrollingDirection = Enum.ScrollingDirection.Y
-	scroll.ScrollBarThickness = 4
-	scroll.ScrollBarImageColor3 = Color3.fromRGB(150, 154, 170)
-	scroll.Parent = content
-	Instance.new("UICorner", scroll).CornerRadius = UDim.new(0, 10)
-	local scrollStroke = Instance.new("UIStroke")
-	scrollStroke.Color = BUTTON_OUTLINE
-	scrollStroke.Thickness = 1
-	scrollStroke.Transparency = 0.5
-	scrollStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	scrollStroke.Parent = scroll
-	local scrollPad = Instance.new("UIPadding", scroll)
-	scrollPad.PaddingTop = UDim.new(0, 6)
-	scrollPad.PaddingBottom = UDim.new(0, 6)
-	scrollPad.PaddingLeft = UDim.new(0, 6)
-	scrollPad.PaddingRight = UDim.new(0, 10)
-	local scrollList = Instance.new("UIListLayout", scroll)
-	scrollList.Padding = UDim.new(0, 6)
-	scrollList.SortOrder = Enum.SortOrder.LayoutOrder
-
-	for i, entry in ipairs(COLORS) do
-		local shown = colorsClose(entry.color, Color3.new(0, 0, 0)) and Color3.fromRGB(40, 40, 46) or entry.color
-		local grad = entry.btnGradient or (entry.gradient and RAINBOW_SEQUENCE) or nil
-		local bg, _, holder = makeGlassButton(scroll, i, string.upper(entry.name) .. "SCOPE", shown, grad,
-			function() applyColor(entry) end)
-		holder.Size = UDim2.new(1, 0, 0, 34)
-		buttons[entry.name] = bg
-	end
-
-	noteLabel = label(content, nextOrder(), "", 11, Color3.fromRGB(150, 150, 170), 14)
-	noteLabel.TextXAlignment = Enum.TextXAlignment.Left
-	noteLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-	noteLabel.TextStrokeTransparency = 0.5
-
-	local footer = Instance.new("Frame")
-	footer.LayoutOrder = nextOrder()
-	footer.Size = UDim2.new(1, 0, 0, 18)
-	footer.BackgroundTransparency = 1
-	footer.Parent = content
-	local hint = Instance.new("TextLabel")
-	hint.Size = UDim2.new(0.6, 0, 1, 0)
-	hint.BackgroundTransparency = 1
-	hint.Font = Enum.Font.Gotham
-	hint.TextSize = 11
-	hint.TextColor3 = Color3.fromRGB(150, 152, 168)
-	hint.TextStrokeColor3 = Color3.new(0, 0, 0)
-	hint.TextStrokeTransparency = 0.5
-	hint.TextXAlignment = Enum.TextXAlignment.Left
-	hint.Text = "RightShift = hide / show"
-	hint.Parent = footer
-	local handle = Instance.new("TextLabel")
-	handle.Size = UDim2.new(0.4, 0, 1, 0)
-	handle.Position = UDim2.new(0.6, 0, 0, 0)
-	handle.BackgroundTransparency = 1
-	handle.Font = BUBBLY_FONT
-	handle.TextSize = 15
-	handle.TextColor3 = Color3.new(1, 1, 1)
-	handle.TextStrokeColor3 = Color3.new(0, 0, 0)
-	handle.TextStrokeTransparency = 0.3
-	handle.TextXAlignment = Enum.TextXAlignment.Right
-	handle.Text = ""
-	handle.Parent = footer
-
-	local credit = Instance.new("TextLabel")
-	credit.LayoutOrder = nextOrder()
-	credit.Size = UDim2.new(1, 0, 0, 26)
-	credit.BackgroundTransparency = 1
-	credit.Font = BUBBLY_FONT
-	credit.TextSize = 17
-	credit.TextColor3 = Color3.new(1, 1, 1)
-	credit.TextStrokeColor3 = Color3.new(0, 0, 0)
-	credit.TextStrokeTransparency = 0.3
-	credit.Text = "made by: FearVesta"
-	credit.Parent = content
-
-	-- ===== SIDE TABS + SHADERS PANEL =====
-	local scopeItems = {}
-	for _, c in ipairs(content:GetChildren()) do
-		if c:IsA("GuiObject") and c ~= header then
-			table.insert(scopeItems, c)
+		for _, entry in ipairs(COLORS) do
+			local shown = colorsClose(entry.color, Color3.new(0, 0, 0)) and Color3.fromRGB(40, 40, 46) or entry.color
+			local grad = entry.btnGradient or (entry.gradient and RAINBOW_SEQUENCE) or nil
+			local bg, _, holder = makeGlassButton(page.frame, page.next(), string.upper(entry.name) .. colorSuffix, shown, grad,
+				function() applyColor(cat, entry) end)
+			holder.Size = UDim2.new(1, 0, 0, 34)
+			ui.buttons[entry.name] = bg
 		end
 	end
 
-	local shadersPanel = Instance.new("Frame")
-	shadersPanel.Name = "ShadersPanel"
-	shadersPanel.LayoutOrder = 50
-	shadersPanel.Size = UDim2.new(1, 0, 0, 0)
-	shadersPanel.AutomaticSize = Enum.AutomaticSize.Y
-	shadersPanel.BackgroundTransparency = 1
-	shadersPanel.Visible = false
-	shadersPanel.Parent = content
-	local panelList = Instance.new("UIListLayout")
-	panelList.Padding = UDim.new(0, 6)
-	panelList.SortOrder = Enum.SortOrder.LayoutOrder
-	panelList.Parent = shadersPanel
+	makeTab("scopes", "SCOPES")
+	makeTab("knife", "KNIFE")
+	makeTab("goldbomb", "GOLD BOMB")
+	makeTab("prankbomb", "PRANK BOMB")
+	makeTab("shaders", "SHADERS")
+
+	buildScopePage(newPage("scopes"), GUN, " SCOPE", "", true)
+	buildScopePage(newPage("knife"), KNIFE, "", "", true)
+	buildScopePage(newPage("goldbomb"), GBOMB, " BOMB", " BOMB", false)
+	buildScopePage(newPage("prankbomb"), PBOMB, " BOMB", " BOMB", false)
+
+	-- ===== SHADERS PAGE =====
+	local sh = newPage("shaders")
+	local shf = sh.frame
 
 	local function panelRow(rowOrder)
 		local row = Instance.new("Frame")
 		row.LayoutOrder = rowOrder
 		row.Size = UDim2.new(1, 0, 0, 30)
 		row.BackgroundTransparency = 1
-		row.Parent = shadersPanel
+		row.Parent = shf
 		local rl = Instance.new("UIListLayout")
 		rl.FillDirection = Enum.FillDirection.Horizontal
 		rl.Padding = UDim.new(0, 6)
@@ -2474,7 +2662,7 @@ local function buildGui()
 	end
 
 	local function panelLabel(rowOrder, text)
-		local l = label(shadersPanel, rowOrder, text, 14, Color3.new(1, 1, 1), 16)
+		local l = label(shf, rowOrder, text, 14, Color3.new(1, 1, 1), 16)
 		l.Font = BUBBLY_FONT
 		l.TextXAlignment = Enum.TextXAlignment.Left
 		l.TextStrokeColor3 = Color3.new(0, 0, 0)
@@ -2487,7 +2675,7 @@ local function buildGui()
 	local shToggleBg, shToggleBtn
 	do
 		local row = panelRow(2)
-		local bg, tb, holder = makeGlassButton(row, 1, "SHADERS: OFF", Color3.fromRGB(78, 80, 92), nil, function()
+		local bg, tb, holder = makeGlassButton(row, 1, "SHADERS: OFF", GRAY, nil, function()
 			shaderOn = not shaderOn
 			applyShader()
 		end)
@@ -2543,7 +2731,7 @@ local function buildGui()
 	local shinyBg, shinyBtn
 	do
 		local row = panelRow(8)
-		local bg, tb, holder = makeGlassButton(row, 1, "SHINY SURFACES: ON", Color3.fromRGB(78, 80, 92), nil, function()
+		local bg, tb, holder = makeGlassButton(row, 1, "SHINY SURFACES: ON", GRAY, nil, function()
 			shinySurfaces = not shinySurfaces
 			if shaderOn then applyShader() elseif shaderUIRefresh then shaderUIRefresh() end
 		end)
@@ -2551,13 +2739,24 @@ local function buildGui()
 		shinyBg, shinyBtn = bg, tb
 	end
 
-	local shNote = label(shadersPanel, 9, "Glossy = bloom glow + sharp reflections + shiny surfaces. Turn SHINY SURFACES off if it lags.", 11, Color3.fromRGB(150, 150, 170), 30)
+	local mirrorBg, mirrorBtn
+	do
+		local row = panelRow(9)
+		local bg, tb, holder = makeGlassButton(row, 1, "MIRROR MODE: ON", GRAY, nil, function()
+			mirrorMode = not mirrorMode
+			if shaderOn then applyShader() elseif shaderUIRefresh then shaderUIRefresh() end
+		end)
+		holder.Size = UDim2.new(1, 0, 1, 0)
+		mirrorBg, mirrorBtn = bg, tb
+	end
+
+	local shNote = label(shf, 10, "Gloss 5 + Mirror Mode = everything reflects like a mirror. Turn SHINY SURFACES off if it lags.", 11, Color3.fromRGB(150, 150, 170), 42)
 	shNote.TextXAlignment = Enum.TextXAlignment.Left
 	shNote.TextStrokeColor3 = Color3.new(0, 0, 0)
 	shNote.TextStrokeTransparency = 0.5
 
 	do
-		local row = panelRow(10)
+		local row = panelRow(11)
 		local _, _, holder = makeGlassButton(row, 1, "TURN OFF SHADERS", Color3.fromRGB(84, 84, 100), nil, function()
 			shaderOn = false
 			applyShader()
@@ -2567,7 +2766,7 @@ local function buildGui()
 
 	shaderUIRefresh = function()
 		shToggleBtn.Text = shaderOn and "SHADERS: ON" or "SHADERS: OFF"
-		shToggleBg.BackgroundColor3 = shaderOn and Color3.fromRGB(0, 105, 190) or Color3.fromRGB(78, 80, 92)
+		shToggleBg.BackgroundColor3 = shaderOn and ON_BLUE or GRAY
 		for name, bg in pairs(presetBgs) do
 			local stroke = bg:FindFirstChildOfClass("UIStroke")
 			if stroke then
@@ -2579,39 +2778,51 @@ local function buildGui()
 		end
 		glossValue.Text = glossLevel .. " / 5"
 		shinyBtn.Text = shinySurfaces and "SHINY SURFACES: ON" or "SHINY SURFACES: OFF"
-		shinyBg.BackgroundColor3 = shinySurfaces and Color3.fromRGB(0, 105, 190) or Color3.fromRGB(78, 80, 92)
+		shinyBg.BackgroundColor3 = shinySurfaces and ON_BLUE or GRAY
+		mirrorBtn.Text = mirrorMode and "MIRROR MODE: ON" or "MIRROR MODE: OFF"
+		mirrorBg.BackgroundColor3 = mirrorMode and ON_BLUE or GRAY
 	end
 	shaderUIRefresh()
 
-	-- side tabs (stuck to the right edge of the menu, they move with it)
-	local tabBgs = {}
-	local function setTab(name)
-		for _, item in ipairs(scopeItems) do
-			item.Visible = (name == "scopes")
-		end
-		shadersPanel.Visible = (name == "shaders")
-		for tabName, bg in pairs(tabBgs) do
-			local stroke = bg:FindFirstChildOfClass("UIStroke")
-			if stroke then
-				local on = (tabName == name)
-				stroke.Color = on and BUTTON_SELECTED or BUTTON_OUTLINE
-				stroke.Thickness = on and 2.5 or 1
-				stroke.Transparency = on and 0 or 0.45
-			end
-		end
-	end
-	local function makeTab(name, text, y)
-		local bg, _, holder = makeGlassButton(frame, 0, text, Color3.fromRGB(84, 84, 100), nil, function()
-			setTab(name)
-		end)
-		holder.Size = UDim2.new(0, 78, 0, 34)
-		holder.Position = UDim2.new(1, 4, 0, y)
-		tabBgs[name] = bg
-	end
-	makeTab("scopes", "SCOPES", 52)
-	makeTab("shaders", "SHADERS", 92)
 	setTab("scopes")
+	updateStatus()
 
+	-- ===== FOOTER =====
+	noteLabel = label(content, 3, "", 11, Color3.fromRGB(150, 150, 170), 14)
+	noteLabel.TextXAlignment = Enum.TextXAlignment.Left
+	noteLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+	noteLabel.TextStrokeTransparency = 0.5
+
+	local footer = Instance.new("Frame")
+	footer.LayoutOrder = 4
+	footer.Size = UDim2.new(1, 0, 0, 18)
+	footer.BackgroundTransparency = 1
+	footer.Parent = content
+	local hint = Instance.new("TextLabel")
+	hint.Size = UDim2.new(1, 0, 1, 0)
+	hint.BackgroundTransparency = 1
+	hint.Font = Enum.Font.Gotham
+	hint.TextSize = 11
+	hint.TextColor3 = Color3.fromRGB(150, 152, 168)
+	hint.TextStrokeColor3 = Color3.new(0, 0, 0)
+	hint.TextStrokeTransparency = 0.5
+	hint.TextXAlignment = Enum.TextXAlignment.Left
+	hint.Text = "RightShift = hide / show"
+	hint.Parent = footer
+
+	local credit = Instance.new("TextLabel")
+	credit.LayoutOrder = 5
+	credit.Size = UDim2.new(1, 0, 0, 26)
+	credit.BackgroundTransparency = 1
+	credit.Font = BUBBLY_FONT
+	credit.TextSize = 17
+	credit.TextColor3 = Color3.new(1, 1, 1)
+	credit.TextStrokeColor3 = Color3.new(0, 0, 0)
+	credit.TextStrokeTransparency = 0.3
+	credit.Text = "made by: FearVesta"
+	credit.Parent = content
+
+	-- ===== CLOSE CONFIRM =====
 	local confirm = Instance.new("Frame")
 	confirm.Name = "ConfirmClose"
 	confirm.Size = UDim2.new(1, 0, 1, 0)
@@ -2663,6 +2874,7 @@ local function buildGui()
 	local yesBtn = confirmButton("YES", 0.3, Color3.fromRGB(125, 30, 30))
 	local noBtn = confirmButton("NO", 0.7, Color3.fromRGB(38, 40, 54))
 
+	-- ===== MINIMISED ICON =====
 	local minimised = false
 	local imageId = loadIconImage()
 	local icon
@@ -2746,20 +2958,16 @@ if not built then
 	warn("[Voidscope Recolor] the menu failed to build: " .. tostring(buildErr))
 end
 
-if next(hooked) then
-	setGunStatus("Gun: found")
-end
-
 local pre = env.VoidscopeColor
 if type(pre) == "string" then
 	if string.lower(pre) == "chroma" then
-		applyColor(RAINBOW)
+		applyColor(GUN, RAINBOW)
 	elseif string.lower(pre) == "glass" then
-		applyColor(GLASS)
+		applyColor(GUN, GLASS)
 	else
 		for _, entry in ipairs(COLORS) do
 			if string.lower(entry.name) == string.lower(pre) then
-				applyColor(entry)
+				applyColor(GUN, entry)
 				break
 			end
 		end
@@ -2771,7 +2979,11 @@ env.VoidscopeRecolorCleanup = function()
 		pcall(function() c:Disconnect() end)
 	end
 	pcall(removeShader)
-	restoreAll()
+	for _, cat in ipairs(CAT_LIST) do
+		cat.sel = nil
+		useCat(cat)
+		pcall(restoreCat, cat)
+	end
 	if gui then gui:Destroy() end
 	env.VoidscopeRecolorCleanup = nil
 end
