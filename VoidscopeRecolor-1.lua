@@ -23,6 +23,7 @@ local MAX_TEX = 512              -- sharper; built once in the background so it 
 local BUDGET_BACKGROUND = 0.006  -- seconds of each frame used while quietly pre-building textures
 local BUDGET_WAITING = 0.03      -- if you click a style that isn't ready, it gets most of the frame
 local PREBUILD_DELAY = 0         -- start building every style the moment the gun is found
+local MARBLE_SCALE = 1.6         -- Diamond / Ruby pattern size: higher = smaller, busier marbling, lower = bigger swirls
 
 -- button shine for the special scopes (gold bands / icy diamond facets / ruby)
 local GOLD_SEQ = ColorSequence.new({
@@ -63,10 +64,10 @@ local COLORS = {
 	{ name = "Gold",       color = Color3.fromRGB(255, 200, 40), mode = "texture", texStyle = "gold", reflectance = 0.45,
 		btnGradient = GOLD_SEQ, effectSeq = GOLD_SEQ },
 	-- DIAMOND: icy crystal, mirror shine, white sparkle
-	{ name = "Diamond",    color = Color3.fromRGB(185, 242, 255), mode = "texture", texStyle = "diamond", reflectance = 0.35,
+	{ name = "Diamond",    color = Color3.fromRGB(185, 242, 255), mode = "texture", texStyle = "diamond", reflectance = 0.2,
 		btnGradient = DIAMOND_SEQ, effectSeq = DIAMOND_SEQ },
 	-- RUBY: deep red gemstone with marbled swirls and bright glints
-	{ name = "Ruby",       color = Color3.fromRGB(190, 15, 40), mode = "texture", texStyle = "ruby", reflectance = 0.3,
+	{ name = "Ruby",       color = Color3.fromRGB(190, 15, 40), mode = "texture", texStyle = "ruby", reflectance = 0.12,
 		btnGradient = RUBY_SEQ, effectSeq = RUBY_SEQ },
 }
 
@@ -147,7 +148,9 @@ local hooked = setmetatable({}, { __mode = "k" })    -- tools we've hooked
 local guarded = setmetatable({}, { __mode = "k" })   -- effects / sounds we already listen to
 local texWatched = setmetatable({}, { __mode = "k" })
 local applied = setmetatable({}, { __mode = "k" })    -- meshPart -> edited texture image it is showing right now
-local surfaces = setmetatable({}, { __mode = "k" })  -- meshPart -> SurfaceAppearance we added (the tint)
+local surfaces = setmetatable({}, { __mode = "k" })  -- meshPart -> the SurfaceAppearance currently showing
+local saCache = setmetatable({}, { __mode = "k" })   -- meshPart -> { tint = SA, rainbow = SA, gold = SA, ... } (one per style, swapped by re-parenting)
+local imgOf = setmetatable({}, { __mode = "k" })     -- SurfaceAppearance -> the edited image it was built from
 local overlays = setmetatable({}, { __mode = "k" })  -- meshPart -> Highlight we added (colour wash)
 local watchedTargets = setmetatable({}, { __mode = "k" })
 local rainbowT = setmetatable({}, { __mode = "k" })       -- part -> 0..1, where it sits along the gun
@@ -332,50 +335,66 @@ local function setOverlay(mp, color, transparency)
 	hl.FillTransparency = transparency
 end
 
-local function setSurfaceTint(mp, color, flat)
+-- takes every appearance we added off the mesh (they stay cached, so showing one again is instant)
+local function hideSurfaces(mp)
+	local cache = saCache[mp]
+	if cache then
+		for _, o in pairs(cache) do
+			if o.Parent then o.Parent = nil end
+		end
+	end
+	surfaces[mp] = nil
+	applied[mp] = nil
+end
+
+-- plain colour tint (Red, Green, Chroma...). Uses its own appearance, never mixed with the edited-image ones
+local function setSurfaceTint(mp, color)
 	local tex
 	pcall(function() tex = mp.TextureID end)
 	if type(tex) ~= "string" or tex == "" then
 		return "notex"
 	end
-	local sa = surfaces[mp]
-	if not sa or not sa.Parent then
-		local existing = mp:FindFirstChild("VSSurface")
-		if existing and existing:IsA("SurfaceAppearance") then
-			sa = existing
-			surfaces[mp] = sa
-		else
-			sa = Instance.new("SurfaceAppearance")
-			sa.Name = "VSSurface"
-			if not pcall(function() sa.ColorMap = tex end) then
-				sa:Destroy()
-				return "fail"
-			end
-			sa.Parent = mp
-			surfaces[mp] = sa
-		end
+	local cache = saCache[mp]
+	if not cache then
+		cache = {}
+		saCache[mp] = cache
 	end
-	pcall(function()
-		local want = flat and "" or tex
-		if sa.ColorMap ~= want then sa.ColorMap = want end
-	end)
+	local sa = cache.tint
+	if not sa then
+		sa = Instance.new("SurfaceAppearance")
+		sa.Name = "VSSurface"
+		if not pcall(function() sa.ColorMap = tex end) then
+			pcall(function() sa:Destroy() end)
+			return "fail"
+		end
+		cache.tint = sa
+	end
 	if not pcall(function() sa.Color = color end) then
 		pcall(function() sa:Destroy() end)
-		surfaces[mp] = nil
+		cache.tint = nil
 		return "fail"
 	end
+	sa.Parent = mp
+	for _, o in pairs(cache) do
+		if o ~= sa and o.Parent then o.Parent = nil end
+	end
+	surfaces[mp] = sa
 	return "ok"
 end
 
 local function removeSurface(mp)
 	applied[mp] = nil
-	local sa = surfaces[mp]
-	if sa then
-		pcall(function() sa:Destroy() end)
-		surfaces[mp] = nil
+	local cache = saCache[mp]
+	if cache then
+		for _, o in pairs(cache) do
+			pcall(function() o:Destroy() end)
+		end
+		saCache[mp] = nil
 	end
-	local existing = mp:FindFirstChild("VSSurface")
-	if existing then pcall(function() existing:Destroy() end) end
+	surfaces[mp] = nil
+	for _, c in ipairs(mp:GetChildren()) do
+		if c.Name == "VSSurface" then pcall(function() c:Destroy() end) end
+	end
 end
 
 local function chromeMesh(mp, color)
@@ -529,11 +548,13 @@ end
 local GOLD_R, GOLD_G, GOLD_B = buildRamp({
 	{ 90, 40, 0 }, { 170, 80, 5 }, { 225, 130, 10 }, { 255, 175, 25 }, { 255, 215, 80 }, { 255, 245, 170 },
 })
+-- DIAMOND: steel-blue shadows -> icy blue -> white
 local DIA_R, DIA_G, DIA_B = buildRamp({
-	{ 45, 75, 120 }, { 90, 130, 185 }, { 150, 190, 225 }, { 205, 225, 245 }, { 245, 250, 255 },
+	{ 40, 65, 110 }, { 80, 115, 165 }, { 125, 160, 200 }, { 180, 208, 232 }, { 228, 241, 252 }, { 255, 255, 255 },
 })
+-- RUBY: near-black maroon -> deep red -> bright red -> pink highlight
 local RUBY_R, RUBY_G, RUBY_B = buildRamp({
-	{ 30, 0, 6 }, { 105, 4, 22 }, { 175, 12, 38 }, { 235, 40, 60 }, { 255, 110, 120 }, { 255, 200, 205 },
+	{ 20, 0, 4 }, { 85, 2, 16 }, { 150, 8, 30 }, { 205, 22, 44 }, { 245, 60, 75 }, { 255, 150, 158 },
 })
 -- PINK: dark parts of the gun = pastel pink, the gun's detail / bright parts fade up to pure white
 local PINK_R, PINK_G, PINK_B = buildRamp({
@@ -573,8 +594,45 @@ local function makeMarbleStyle(R, G, B, strength, glintLevel)
 end
 
 TEX_STYLES.gold = makeMarbleStyle(GOLD_R, GOLD_G, GOLD_B, 0.45, 0.992)
-TEX_STYLES.diamond = makeMarbleStyle(DIA_R, DIA_G, DIA_B, 0.35, 0.975)
-TEX_STYLES.ruby = makeMarbleStyle(RUBY_R, RUBY_G, RUBY_B, 0.4, 0.985)
+-- gem look: soft blotches + thin veins from the noise fields, the gun's own detail on top,
+-- soft highlights on bright detail and tiny sparkles
+local function makeGemStyle(R, G, B, o)
+	return function(stats)
+		local lo, hi = stats.q(0.05), stats.q(0.95)
+		local span = math.max(hi - lo, 0.05)
+		local floor = math.floor
+		local hl = o.hl
+		return function(lum, u, v, a, vn, gr)
+			local rel = (lum - lo) / span
+			if rel < 0 then rel = 0 elseif rel > 1 then rel = 1 end
+			local t = o.bias + o.lumW * rel + o.aW * a + o.vW * vn
+			t = (t - 0.5) * o.contrast + 0.5
+			if t < 0 then t = 0 elseif t > 1 then t = 1 end
+			local k = floor(t * 255) + 1
+			local r, g, b = R[k], G[k], B[k]
+			local s = (rel - 0.8) / 0.2
+			if s > 0 then
+				s = s * o.spec
+				r, g, b = r + (hl[1] - r) * s, g + (hl[2] - g) * s, b + (hl[3] - b) * s
+			end
+			local w = (gr - o.glintAt) / (1 - o.glintAt)
+			if w > 0 then
+				w = w * o.glint
+				r, g, b = r + (hl[1] - r) * w, g + (hl[2] - g) * w, b + (hl[3] - b) * w
+			end
+			return r, g, b
+		end
+	end
+end
+
+TEX_STYLES.diamond = makeGemStyle(DIA_R, DIA_G, DIA_B, {
+	bias = 0.1, lumW = 0.15, aW = 0.7, vW = 0.35, contrast = 1.6,
+	spec = 0.35, hl = { 255, 255, 255 }, glintAt = 0.93, glint = 0.85,
+})
+TEX_STYLES.ruby = makeGemStyle(RUBY_R, RUBY_G, RUBY_B, {
+	bias = -0.02, lumW = 0.22, aW = 0.6, vW = 0.55, contrast = 1.8,
+	spec = 0.45, hl = { 255, 175, 185 }, glintAt = 0.94, glint = 0.7,
+})
 
 TEX_STYLES.pink = function(stats)
 	local lo, hi = stats.q(0.05), stats.q(0.95)
@@ -602,7 +660,34 @@ local function percentileOf(hist, total, p)
 	return 1
 end
 
-local sources = {} -- texture id -> { w, h, buf, lum, hist, seen }
+local sources = {} -- texture id -> { w, h, buf, lum, hist, seen, nA, nV, nG }
+
+-- smooth value noise (tileable), used to make the Diamond / Ruby marbling
+local NOISE_N = 64
+local lattice = {}
+do
+	local seed = 1234567
+	for i = 1, NOISE_N * NOISE_N do
+		seed = (seed * 16807) % 2147483647
+		lattice[i] = seed / 2147483647
+	end
+end
+local function vnoise(x, y)
+	local floor = math.floor
+	local ix, iy = floor(x), floor(y)
+	local fx, fy = x - ix, y - iy
+	fx = fx * fx * (3 - 2 * fx)
+	fy = fy * fy * (3 - 2 * fy)
+	local x0, y0 = ix % NOISE_N, iy % NOISE_N
+	local x1, y1 = (x0 + 1) % NOISE_N, (y0 + 1) % NOISE_N
+	local a = lattice[x0 + y0 * NOISE_N + 1]
+	local b = lattice[x1 + y0 * NOISE_N + 1]
+	local c = lattice[x0 + y1 * NOISE_N + 1]
+	local d = lattice[x1 + y1 * NOISE_N + 1]
+	local top = a + (b - a) * fx
+	local bot = c + (d - c) * fx
+	return top + (bot - top) * fy
+end
 
 local function makeBreather(budgetFn)
 	local mark = os.clock()
@@ -659,7 +744,37 @@ local function loadSource(tex, budgetFn)
 			end
 			breathe()
 		end
-		src = { w = w, h = h, buf = buf, lum = lumBuf, hist = hist, seen = seen }
+		-- marble fields, worked out once per texture and shared by Diamond / Ruby
+		-- nA = soft blotches, nV = thin bright veins / cracks, nG = fine grain for sparkles
+		local nA, nV, nG = buffer.create(w * h), buffer.create(w * h), buffer.create(w * h)
+		local S = MARBLE_SCALE
+		local mfloor, mabs, mmax = math.floor, math.abs, math.max
+		for y = 0, h - 1 do
+			local v = y / h
+			local row = y * w
+			for x = 0, w - 1 do
+				local u = x / w
+				local a = 0.5 * vnoise(u * 5 * S, v * 5 * S) + 0.3 * vnoise(u * 11 * S, v * 11 * S) + 0.2 * vnoise(u * 23 * S, v * 23 * S)
+				local wx = vnoise(u * 7 * S + 3.1, v * 7 * S + 1.7)
+				local r1 = vnoise(u * 9 * S + wx * 1.8, v * 9 * S + a * 1.8)
+				r1 = 1 - mabs(2 * r1 - 1)
+				r1 = r1 * r1
+				r1 = r1 * r1
+				local r2 = vnoise(u * 20 * S + a * 2.2, v * 20 * S + wx * 2.2)
+				r2 = 1 - mabs(2 * r2 - 1)
+				r2 = r2 * r2
+				r2 = r2 * r2
+				r2 = r2 * r2
+				local vein = mmax(r1, r2 * 0.8)
+				local grain = vnoise(u * 110 * S, v * 110 * S)
+				local i = row + x
+				writeu8(nA, i, mfloor(math.clamp(a, 0, 1) * 255 + 0.5))
+				writeu8(nV, i, mfloor(math.clamp(vein, 0, 1) * 255 + 0.5))
+				writeu8(nG, i, mfloor(math.clamp(grain, 0, 1) * 255 + 0.5))
+			end
+			breathe()
+		end
+		src = { w = w, h = h, buf = buf, lum = lumBuf, hist = hist, seen = seen, nA = nA, nV = nV, nG = nG }
 	end)
 	pcall(function() ei:Destroy() end)
 	if not okRead then return nil, "couldn't read the texture (" .. tostring(errRead) .. ")" end
@@ -687,6 +802,7 @@ local function paintSource(src, makePixel, budgetFn)
 		local out = buffer.create(w * h * 4)
 		buffer.copy(out, 0, src.buf, 0, w * h * 4) -- keeps the see-through (alpha) values
 		local lumBuf = src.lum
+		local nA, nV, nG = src.nA, src.nV, src.nG
 		local pixel = makePixel(stats)
 		for y = 0, h - 1 do
 			local row = y * w
@@ -694,7 +810,8 @@ local function paintSource(src, makePixel, budgetFn)
 			for x = 0, w - 1 do
 				local i = row + x
 				local o = i * 4
-				local nr, ng, nb = pixel(readu8(lumBuf, i) / 255, x / w, v)
+				local nr, ng, nb = pixel(readu8(lumBuf, i) / 255, x / w, v,
+					readu8(nA, i) / 255, readu8(nV, i) / 255, readu8(nG, i) / 255)
 				writeu8(out, o, nr < 0 and 0 or (nr > 255 and 255 or math.floor(nr)))
 				writeu8(out, o + 1, ng < 0 and 0 or (ng > 255 and 255 or math.floor(ng)))
 				writeu8(out, o + 2, nb < 0 and 0 or (nb > 255 and 255 or math.floor(nb)))
@@ -710,20 +827,45 @@ local function paintSource(src, makePixel, budgetFn)
 end
 
 -- puts the edited image on the mesh. Returns true if it is showing.
-local function applyEdited(mp, image)
-	local sa = surfaces[mp]
-	if sa and sa.Parent and applied[mp] == image then return true end
-	if not (sa and sa.Parent) then
-		applied[mp] = nil
-		if setSurfaceTint(mp, Color3.new(1, 1, 1), true) ~= "ok" then return false end
-		sa = surfaces[mp]
+-- Every style gets its OWN SurfaceAppearance on the mesh. Switching styles just swaps which one is
+-- parented, so no image is ever re-assigned on a live appearance (that was the cause of the flat colour).
+local function applyEdited(mp, image, style)
+	local cache = saCache[mp]
+	if not cache then
+		cache = {}
+		saCache[mp] = cache
 	end
-	local ok = pcall(function()
-		sa.ColorMapContent = Content.fromObject(image)
-		sa.Color = Color3.new(1, 1, 1)
-	end)
-	if ok then applied[mp] = image else applied[mp] = nil end
-	return ok
+	local sa = cache[style]
+	if sa and imgOf[sa] ~= image then -- the image was rebuilt, so this appearance is out of date
+		pcall(function() sa:Destroy() end)
+		cache[style] = nil
+		sa = nil
+	end
+	if sa and surfaces[mp] == sa and sa.Parent == mp then
+		applied[mp] = image
+		return true
+	end
+	if not sa then
+		sa = Instance.new("SurfaceAppearance")
+		sa.Name = "VSSurface"
+		local ok = pcall(function()
+			sa.ColorMapContent = Content.fromObject(image)
+			sa.Color = Color3.new(1, 1, 1)
+		end)
+		if not ok then
+			pcall(function() sa:Destroy() end)
+			return false
+		end
+		cache[style] = sa
+		imgOf[sa] = image
+	end
+	sa.Parent = mp -- show the new one first, then hide the others, so there is never a gap
+	for _, o in pairs(cache) do
+		if o ~= sa and o.Parent then o.Parent = nil end
+	end
+	surfaces[mp] = sa
+	applied[mp] = image
+	return true
 end
 
 local tintMesh
@@ -811,7 +953,7 @@ function tintMesh(mp, color)
 		end
 		local entry = ensureTexture(style, tex)
 		if entry and entry.state == "done" then
-			if applyEdited(mp, entry.image) then
+			if applyEdited(mp, entry.image, style) then
 				removeOverlay(mp)
 				return
 			end
@@ -823,7 +965,7 @@ function tintMesh(mp, color)
 		if entry and entry.state == "working" then
 			-- NO flat colour: keep whatever texture is showing now and swap the moment this one is ready
 			entry.waiters[mp] = true
-			if not applied[mp] then removeSurface(mp) end
+			if not applied[mp] then hideSurfaces(mp) end
 			setNote("Building the " .. style .. " texture...")
 		elseif entry and entry.state == "failed" then
 			removeSurface(mp)
@@ -1168,6 +1310,12 @@ local function restoreAll()
 	end
 	for mp in pairs(overlays) do removeOverlay(mp) end
 	for mp in pairs(applied) do applied[mp] = nil end
+	for mp, cache in pairs(saCache) do
+		for _, o in pairs(cache) do
+			pcall(function() o:Destroy() end)
+		end
+		saCache[mp] = nil
+	end
 	for mp, sa in pairs(surfaces) do
 		pcall(function() sa:Destroy() end)
 		surfaces[mp] = nil
