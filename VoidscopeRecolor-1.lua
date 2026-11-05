@@ -480,7 +480,9 @@ end
 
 local AssetService = game:GetService("AssetService")
 local pinkCache = {}                     -- "style|texture id" -> { state, image, waiters }
-
+local TEX_STYLES = {}
+-- (Luau allows only 200 local variables per scope, so the texture-style helpers live in their own block)
+do
 -- Rainbow texture settings (matched to the reference photo: near-black body, vivid bright parts)
 local RB_BRIGHTNESS = 1.0
 local RB_X_WEIGHT = 0.6
@@ -508,8 +510,8 @@ end
 
 -- each style gets the texture's stats and gives back a function that turns one pixel
 -- (brightness 0-1, position u/v 0-1 across the texture) into r, g, b (0-255)
-local TEX_STYLES = {
-	rainbow = function(stats)
+TEX_STYLES.rainbow = (
+	function(stats)
 		local lo, hi = stats.q(0.05), stats.q(0.95)
 		local span = math.max(hi - lo, 0.05)
 		local sw = RB_X_WEIGHT + RB_Y_WEIGHT
@@ -537,8 +539,8 @@ local TEX_STYLES = {
 			end
 			return r, g, b
 		end
-	end,
-}
+	end
+)
 
 local function buildRamp(stops)
 	local R, G, B = {}, {}, {}
@@ -676,6 +678,7 @@ TEX_STYLES.white = function(stats)
 		return WHITE_R[k], WHITE_G[k], WHITE_B[k]
 	end
 end
+end -- end of texture-style block
 
 local PREBUILD_STYLES = { "rainbow", "gold", "diamond", "ruby", "pink", "white" }
 
@@ -1800,13 +1803,16 @@ end)
 -- Bombs that appear later (when you use the emote) are recoloured the moment they spawn.
 -- Uses its own save-slot so resetting the scope never touches the bombs and vice versa.
 ---------------------------------------------------------------------
-local BOMB_KINDS = { "gold", "prank" }
-local bombSel = {}                                   -- kind -> selected COLORS entry
+-- these five are used by the menu / cleanup further down; everything else stays inside the block
+local BOMB_KINDS, bombSel, bombButtons, resetBomb, applyBomb
+do
+BOMB_KINDS = { "gold", "prank" }
+bombSel = {}                                         -- kind -> selected COLORS entry
 local bombTouched = {
 	gold = setmetatable({}, { __mode = "k" }),
 	prank = setmetatable({}, { __mode = "k" }),
 }
-local bombButtons = { gold = {}, prank = {} }        -- kind -> { colour name -> button background }
+bombButtons = { gold = {}, prank = {} }              -- kind -> { colour name -> button background }
 local bombOrig = setmetatable({}, { __mode = "k" })  -- inst -> { prop = original value }
 local bombRainbow = setmetatable({}, { __mode = "k" }) -- part -> hue offset (Rainbow bomb)
 local bombGuarded = setmetatable({}, { __mode = "k" })
@@ -1970,7 +1976,7 @@ local function restoreBombInst(inst)
 	end
 end
 
-local function resetBomb(kind)
+function resetBomb(kind)
 	bombSel[kind] = nil
 	bombScan[kind] += 1 -- cancels any scan still running
 	for inst in pairs(bombTouched[kind]) do
@@ -2018,7 +2024,7 @@ local function scanBomb(kind, entry)
 	end)
 end
 
-local function applyBomb(kind, entry)
+function applyBomb(kind, entry)
 	bombSel[kind] = entry
 	scanBomb(kind, entry)
 end
@@ -2055,6 +2061,7 @@ connect(RunService.Heartbeat, function()
 		end
 	end
 end)
+end -- end of bomb block
 
 ---------------------------------------------------------------------
 -- HEX PARSER (used by the hex colour picker on the Scopes tab)
