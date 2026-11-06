@@ -31,7 +31,7 @@ local WHITE_INVERT = false
 
 -- BOMB EMOTE SETTINGS (Gold Bomb / Prank Bomb tabs)
 local BOMB_RADIUS = 100          -- studs from you within which a bomb that isn't in your character counts as yours
-local BOMB_RAINBOW_SPEED = 0.3   -- how fast the fallback Rainbow colour cycles (plain parts / while the texture builds)
+local BOMB_SCAN_DELAY = 3        -- seconds after loading before the game is quietly searched for bombs to pre-build their textures
 -- Extra names to look for (copy the exact name you see in Dex). Spaces / _ / - and capitals are ignored.
 -- The prank bomb emote is called "FakeBomb" so that is built in.
 local BOMB_NAMES = { gold = {}, prank = { "fakebomb" } }
@@ -87,22 +87,32 @@ local COLORS = {
 		btnGradient = RUBY_SEQ, effectSeq = RUBY_SEQ },
 }
 
--- COLOURS FOR THE BOMB TABS (Gold Bomb + Prank Bomb use the same list)
--- no Gold / Diamond / Ruby here. White and Pink use "light = true": the bomb keeps its normal texture
--- detail but is painted pale white / pure pink. Rainbow uses a rainbow texture on the bomb's own texture.
+-- COLOURS FOR THE BOMB TABS
+-- Every colour FULLY repaints the bomb's texture (editable image): every pixel becomes that colour, and the only
+-- thing kept is the texture's light / dark detail. "ramp" (optional) = exact dark -> bright colours for the repaint.
+-- Rainbow paints the rainbow onto the texture (static, no colour cycling).
+-- Gold Bomb tab = everything except Yellow, Prank Bomb tab = everything.
 local BOMB_COLORS = {
 	{ name = "Red",        color = Color3.fromRGB(255, 0, 0) },
 	{ name = "Green",      color = Color3.fromRGB(0, 255, 0) },
-	{ name = "Black",      color = Color3.fromRGB(0, 0, 0) },
+	{ name = "Black",      color = Color3.fromRGB(0, 0, 0),
+		ramp = { { 6, 6, 8 }, { 22, 22, 26 }, { 40, 40, 46 }, { 66, 66, 74 }, { 100, 100, 110 } } },
 	{ name = "Orange",     color = Color3.fromRGB(255, 128, 0) },
 	{ name = "Yellow",     color = Color3.fromRGB(255, 255, 0) },
 	{ name = "Blue",       color = Color3.fromRGB(0, 100, 255) },
 	{ name = "Purple",     color = Color3.fromRGB(160, 32, 240) },
 	{ name = "Cyan",       color = Color3.fromRGB(0, 255, 255) },
-	{ name = "Pink",       color = Color3.fromRGB(255, 105, 180), light = true },
-	{ name = "White",      color = Color3.fromRGB(238, 238, 244), light = true },
+	{ name = "Pink",       color = Color3.fromRGB(255, 105, 180),
+		ramp = { { 175, 40, 108 }, { 235, 78, 148 }, { 255, 105, 180 }, { 255, 160, 208 }, { 255, 215, 236 } } },
+	{ name = "White",      color = Color3.fromRGB(238, 238, 244),
+		ramp = { { 188, 188, 198 }, { 216, 216, 225 }, { 238, 238, 244 }, { 249, 249, 253 }, { 255, 255, 255 } } },
 	{ name = "Rainbow",    color = Color3.fromRGB(255, 60, 200), texStyle = "rainbow", gradient = true, rainbowFx = true },
 }
+local BOMB_LISTS = { gold = {}, prank = {} }
+for _, e in ipairs(BOMB_COLORS) do
+	table.insert(BOMB_LISTS.prank, e)
+	if e.name ~= "Yellow" then table.insert(BOMB_LISTS.gold, e) end
+end
 
 local RAINBOW_SPIN = 0.08
 local RAINBOW = { name = "Chroma", color = Color3.fromRGB(255, 80, 200), mode = "rainbow" }
@@ -493,6 +503,7 @@ end
 local AssetService = game:GetService("AssetService")
 local pinkCache = {}                     -- "style|texture id" -> { state, image, waiters }
 local TEX_STYLES = {}
+local makeBombStyle                      -- filled in inside the block below: builds a full-recolour style for a bomb colour
 -- (Luau allows only 200 local variables per scope, so the texture-style helpers live in their own block)
 do
 -- Rainbow texture settings (matched to the reference photo: near-black body, vivid bright parts)
@@ -554,8 +565,7 @@ TEX_STYLES.rainbow = (
 	end
 )
 
--- BOMB RAINBOW: same rainbow colours but much brighter, so the bomb's own texture detail stays visible
--- and the colours really show (the gun version keeps a near-black body)
+-- BOMB RAINBOW: the same rainbow colours but bright, painted over the bomb's own detail (static, no cycling)
 TEX_STYLES.bombrainbow = function(stats)
 	local lo, hi = stats.q(0.03), stats.q(0.97)
 	local span = math.max(hi - lo, 0.05)
@@ -565,7 +575,7 @@ TEX_STYLES.bombrainbow = function(stats)
 		local s = u * 0.6 + v * 0.4
 		if s < 0 then s = 0 elseif s > 1 then s = 1 end
 		local k = math.floor(s * 255) + 1
-		local shade = 0.6 + 0.4 * rel
+		local shade = 0.55 + 0.45 * rel
 		return GR[k] * shade, GG[k] * shade, GB[k] * shade
 	end
 end
@@ -582,6 +592,32 @@ local function buildRamp(stops)
 		B[k] = a[3] + (b[3] - a[3]) * f
 	end
 	return R, G, B
+end
+
+-- BOMB FULL RECOLOUR: every pixel is repainted in the chosen colour. Dark parts of the texture become a deep
+-- shade of the colour, bright parts a light shade of it, so the texture's detail stays but the colour is 100% new
+-- (nothing of the old colours is left, this is not a tint).
+makeBombStyle = function(entry)
+	local stops = entry.ramp
+	if not stops then
+		local c = entry.color
+		local r, g, b = c.R * 255, c.G * 255, c.B * 255
+		local function mul(f) return { r * f, g * f, b * f } end
+		local function lift(f) return { r + (255 - r) * f, g + (255 - g) * f, b + (255 - b) * f } end
+		stops = { mul(0.3), mul(0.62), { r, g, b }, lift(0.3), lift(0.55) }
+	end
+	local R, G, B = buildRamp(stops)
+	return function(stats)
+		local lo, hi = stats.q(0.03), stats.q(0.97)
+		local span = math.max(hi - lo, 0.05)
+		local floor = math.floor
+		return function(lum)
+			local rel = (lum - lo) / span
+			if rel < 0 then rel = 0 elseif rel > 1 then rel = 1 end
+			local k = floor((0.12 + 0.88 * rel) * 255) + 1
+			return R[k], G[k], B[k]
+		end
+	end
 end
 
 local GOLD_R, GOLD_G, GOLD_B = buildRamp({
@@ -707,32 +743,6 @@ TEX_STYLES.white = function(stats)
 	end
 end
 end -- end of texture-style block
-
--- BOMB SHADE: a grey copy of a texture (detail kept, colour removed). Tinting it with a colour recolours the
--- bomb while the texture detail stays. Kept fairly bright so the colour really shows.
-TEX_STYLES.bombshade = function(stats)
-	local lo, hi = stats.q(0.03), stats.q(0.97)
-	local span = math.max(hi - lo, 0.05)
-	return function(lum)
-		local rel = (lum - lo) / span
-		if rel < 0 then rel = 0 elseif rel > 1 then rel = 1 end
-		local s = (0.5 + 0.5 * rel) * 255
-		return s, s, s
-	end
-end
-
--- BOMB SHADE (LIGHT): very bright grey copy, used for pale White and pure Pink so they stay light
--- but still show the bomb's normal texture detail
-TEX_STYLES.bombshadelight = function(stats)
-	local lo, hi = stats.q(0.03), stats.q(0.97)
-	local span = math.max(hi - lo, 0.05)
-	return function(lum)
-		local rel = (lum - lo) / span
-		if rel < 0 then rel = 0 elseif rel > 1 then rel = 1 end
-		local s = (0.84 + 0.16 * rel) * 255
-		return s, s, s
-	end
-end
 
 local PREBUILD_STYLES = { "rainbow", "gold", "diamond", "ruby", "pink", "white" }
 
@@ -1853,12 +1863,12 @@ end)
 ---------------------------------------------------------------------
 -- BOMB EMOTES (Gold Bomb / Prank Bomb tabs)
 -- Finds anything named like "GoldBomb" / "Gold Bomb" / "FakeBomb" (and anything inside it),
--- in your character, your backpack, or near you in the workspace, and recolours it.
--- Bombs that appear later (when you use the emote) are recoloured the moment they spawn.
--- The bomb keeps its own texture: it is swapped for a bright grey copy of itself that is tinted with
--- your colour (so the colour really shows and the detail stays). The colour is shown instantly on the
--- original texture while the grey copy builds. Rainbow uses a rainbow-painted copy of the texture.
--- Uses its own save-slot so resetting the scope never touches the bombs and vice versa.
+-- in your character, your backpack, or near you in the workspace, and FULLY recolours it.
+-- Full recolour = the bomb's texture is repainted pixel by pixel with an editable image in the new colour, so none of
+-- the old colour is left. Only the texture's light / dark detail is kept (shown as lighter / darker shades of the colour).
+-- Speed: like the scopes, every colour for a bomb's texture is built quietly in the background the moment the bomb is
+-- first seen (and the game is searched for bombs a few seconds after loading), so picking a colour is instant.
+-- No hue cycling, no tinting. Uses its own save-slot so resetting the scope never touches the bombs and vice versa.
 ---------------------------------------------------------------------
 -- these five are used by the menu / cleanup further down; everything else stays inside the block
 local BOMB_KINDS, bombSel, bombButtons, resetBomb, applyBomb
@@ -1871,12 +1881,12 @@ local bombTouched = {
 }
 bombButtons = { gold = {}, prank = {} }              -- kind -> { colour name -> button background }
 local bombOrig = setmetatable({}, { __mode = "k" })  -- inst -> { prop = original value }
-local bombRainbow = setmetatable({}, { __mode = "k" }) -- part -> hue offset (fallback Rainbow colour)
+local bombHue = setmetatable({}, { __mode = "k" })   -- plain part -> fixed random hue (Rainbow on parts with no texture)
 local bombGuarded = setmetatable({}, { __mode = "k" })
 local bombPartGuard = setmetatable({}, { __mode = "k" })
 local bombOwn = setmetatable({}, { __mode = "k" })   -- roots we already decided are yours
 local bombScan = { gold = 0, prank = 0 }
-local lastBombSpin = 0
+local bombPrebuilt = {}                              -- "kind|texture id" -> true once every colour was queued
 
 local function bset(inst, prop, value)
 	local saved = bombOrig[inst]
@@ -1959,6 +1969,26 @@ local function bombWantSeq(entry)
 	return entry.effectSeq or ColorSequence.new(entry.color)
 end
 
+-- the texture style (full recolour) that belongs to a bomb colour; made the first time it is needed
+local function styleFor(entry)
+	if isRainbowEntry(entry) then return "bombrainbow" end
+	local c = entry.color
+	local key = string.format("bomb_%s_%02x%02x%02x", entry.name, math.floor(c.R * 255 + 0.5),
+		math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
+	if not TEX_STYLES[key] then TEX_STYLES[key] = makeBombStyle(entry) end
+	return key
+end
+
+-- queues every colour of that bomb's tab for this texture, in the background (the one you pick always jumps the queue)
+local function prebuildBombTex(tex, kind)
+	local mark = kind .. "|" .. tex
+	if bombPrebuilt[mark] then return end
+	bombPrebuilt[mark] = true
+	for _, e in ipairs(BOMB_LISTS[kind]) do
+		ensureTexture(styleFor(e), tex)
+	end
+end
+
 local function guardBombEffect(inst, kind)
 	if bombGuarded[inst] then return end
 	bombGuarded[inst] = true
@@ -1973,7 +2003,7 @@ local function guardBombEffect(inst, kind)
 	end)
 end
 
--- if the game paints a plain bomb part back to its own colour, paint it again
+-- if the game paints a plain (texture-less) bomb part back to its own colour, paint it again
 local function guardBombPart(inst, kind)
 	if bombPartGuard[inst] then return end
 	bombPartGuard[inst] = true
@@ -1981,17 +2011,16 @@ local function guardBombPart(inst, kind)
 		local e = bombSel[kind]
 		if not e or isRainbowEntry(e) then return end
 		if bombTouched[kind][inst] and not colorsClose(inst.Color, e.color) then
-			local sa = nil
 			bset(inst, "Color", e.color)
 		end
 	end)
 end
 
 local bombSA = setmetatable({}, { __mode = "k" })    -- part -> the SurfaceAppearance we are showing
-local bombSAKey = setmetatable({}, { __mode = "k" }) -- part -> which look that appearance is ("tint", "bombshade", ...)
+local bombSAKey = setmetatable({}, { __mode = "k" }) -- part -> which style that appearance is
 local bombTex = setmetatable({}, { __mode = "k" })   -- part -> its original texture id
 local bombHid = setmetatable({}, { __mode = "k" })   -- part -> the game's own SurfaceAppearance we took off (put back on reset)
-local bombWait = setmetatable({}, { __mode = "k" })  -- part -> waiting for its texture copy to finish building
+local bombWait = setmetatable({}, { __mode = "k" })  -- part -> waiting for its recoloured texture to finish building
 local paintBombInst
 
 local function ownAppearance(mp)
@@ -2008,83 +2037,75 @@ local function destroyBombSA(mp)
 	bombSAKey[mp] = nil
 end
 
--- shows one look on the mesh. A look is never edited in place: a different look gets a brand new appearance,
--- so there is never a stale / flat texture
-local function showSA(mp, key, texString, image, color)
+-- shows a recoloured image on the mesh. A style is never edited in place: a different style gets a brand new
+-- appearance, so there is never a stale / flat texture
+local function showSA(mp, key, image)
 	local sa = bombSA[mp]
-	if sa and sa.Parent == mp and bombSAKey[mp] == key then
-		pcall(function() sa.Color = color end)
-		return true
-	end
+	if sa and sa.Parent == mp and bombSAKey[mp] == key and imgOf[sa] == image then return true end
 	destroyBombSA(mp)
 	sa = Instance.new("SurfaceAppearance")
 	sa.Name = "VSBombSurface"
 	local ok = pcall(function()
-		if image then
-			sa.ColorMapContent = Content.fromObject(image)
-		else
-			sa.ColorMap = texString
-		end
-		sa.Color = color
+		sa.ColorMapContent = Content.fromObject(image)
+		sa.Color = Color3.new(1, 1, 1) -- white = no tint at all, the recoloured image shows exactly as painted
 	end)
 	if not ok then
 		pcall(function() sa:Destroy() end)
 		return false
 	end
 	sa.Parent = mp
+	imgOf[sa] = image
 	bombSA[mp] = sa
 	bombSAKey[mp] = key
 	return true
 end
 
--- keeps the texture: swaps it for a grey copy of itself (same detail) and tints that copy with the colour.
--- Returns true only when the final textured look is showing. Until then the colour is already visible
--- as a tint on the original texture.
-local function applyShade(mp, color, kind, entry)
+local function texOf(mp)
 	local tex = bombTex[mp]
-	if not tex then
+	if tex then return tex end
+	local own = ownAppearance(mp)
+	if own then pcall(function() tex = own.ColorMap end) end
+	if type(tex) ~= "string" or tex == "" then
+		pcall(function() tex = mp.TextureID end)
+	end
+	if type(tex) ~= "string" or tex == "" then return nil end
+	bombTex[mp] = tex
+	return tex
+end
+
+-- returns "done" (recoloured texture showing), "pending" (still building, the bomb keeps its look until it is ready)
+-- or "notex" (a plain part with no texture, painted with a flat colour instead)
+local function applyShade(mp, entry, kind)
+	local tex = texOf(mp)
+	if not tex then return "notex" end
+	local style = styleFor(entry)
+	local ent = ensureTexture(style, tex) -- queued first so the colour you picked is built before the rest
+	prebuildBombTex(tex, kind)
+	if ent and ent.state == "done" then
 		local own = ownAppearance(mp)
-		if own then pcall(function() tex = own.ColorMap end) end
-		if type(tex) ~= "string" or tex == "" then
-			pcall(function() tex = mp.TextureID end)
-		end
-		if type(tex) ~= "string" or tex == "" then return false end
-		bombTex[mp] = tex
 		if own then
-			bombHid[mp] = own   -- take the game's own appearance off so ours is the only one showing
+			bombHid[mp] = own -- take the game's own appearance off so ours is the only one showing
 			own.Parent = nil
 		end
+		if showSA(mp, style, ent.image) then return "done" end
+		pinkCache[style .. "|" .. tex] = nil -- the image went bad, build it again
+		ent = ensureTexture(style, tex)
 	end
-	local style
-	if isRainbowEntry(entry) then
-		style = "bombrainbow"
-	elseif entry.light then
-		style = "bombshadelight"
-	else
-		style = "bombshade"
-	end
-	local ent = ensureTexture(style, tex)
-	if ent and ent.state == "done" then
-		local c = (style == "bombrainbow") and Color3.new(1, 1, 1) or color
-		if showSA(mp, style, nil, ent.image, c) then return true end
-		pinkCache[style .. "|" .. tex] = nil -- the image went bad, build it again next time
-	end
-	-- not ready yet: show the colour right away on the original texture
-	showSA(mp, "tint", tex, nil, color)
 	if ent and ent.state == "working" then
-		ent.waiters[{}] = true -- speeds the build up; a dummy key so nothing else gets repainted
+		ent.waiters[{}] = true -- gives it most of the frame; a dummy key so nothing else gets repainted
+		setNote("Building the bomb colour...")
 		if not bombWait[mp] then
 			bombWait[mp] = true
 			task.spawn(function()
 				local t0 = os.clock()
-				while ent.state == "working" and os.clock() - t0 < 90 do task.wait(0.1) end
+				while ent.state == "working" and os.clock() - t0 < 90 do task.wait(0.05) end
 				bombWait[mp] = nil
 				local e = bombSel[kind]
 				if e and mp.Parent and ent.state == "done" then paintBombInst(mp, e, kind) end
 			end)
 		end
 	end
-	return false
+	return "pending"
 end
 
 function paintBombInst(inst, entry, kind)
@@ -2092,22 +2113,20 @@ function paintBombInst(inst, entry, kind)
 	local color = entry.color
 	if inst:IsA("BasePart") then
 		bombTouched[kind][inst] = true
-		if rainbow then
-			bombRainbow[inst] = bombRainbow[inst] or math.random()
-			color = Color3.fromHSV((os.clock() * BOMB_RAINBOW_SPEED + bombRainbow[inst]) % 1, 0.9, 1)
-			local shaded = false
-			if inst:IsA("MeshPart") then shaded = applyShade(inst, color, kind, entry) end
-			if shaded then
-				bombRainbow[inst] = nil -- the rainbow texture is showing, stop cycling the tint
-				color = Color3.new(1, 1, 1)
+		local state = "notex"
+		if inst:IsA("MeshPart") then state = applyShade(inst, entry, kind) end
+		if state == "done" then
+			bset(inst, "Color", Color3.new(1, 1, 1))
+		elseif state == "notex" then
+			local c = color
+			if rainbow then
+				bombHue[inst] = bombHue[inst] or math.random()
+				c = Color3.fromHSV(bombHue[inst], 0.9, 1) -- fixed colour per part, never changes
 			end
-		else
-			bombRainbow[inst] = nil
-			if inst:IsA("MeshPart") then applyShade(inst, color, kind, entry) end
+			bset(inst, "Color", c)
+			guardBombPart(inst, kind)
 		end
-		bset(inst, "Color", color)
 		if entry.reflectance then bset(inst, "Reflectance", entry.reflectance) end
-		guardBombPart(inst, kind)
 		return true
 	elseif isEffect(inst) then
 		bombTouched[kind][inst] = true
@@ -2117,13 +2136,13 @@ function paintBombInst(inst, entry, kind)
 	elseif inst:IsA("SpecialMesh") then
 		bombTouched[kind][inst] = true
 		if rainbow then
-			bset(inst, "VertexColor", Vector3.new(1, 1, 1)) -- the part's cycling colour shows through
+			bset(inst, "VertexColor", Vector3.new(1, 1, 1)) -- the part's fixed colour shows through
 		else
 			bset(inst, "VertexColor", Vector3.new(color.R, color.G, color.B))
 		end
 		return true
 	elseif inst:IsA("SurfaceAppearance") then
-		bombTouched[kind][inst] = true -- its MeshPart recolours it (keeping the texture)
+		bombTouched[kind][inst] = true -- its MeshPart recolours it
 		return true
 	elseif inst:IsA("Decal") or inst:IsA("Texture") then
 		bombTouched[kind][inst] = true
@@ -2156,7 +2175,7 @@ function paintBombInst(inst, entry, kind)
 end
 
 local function restoreBombInst(inst)
-	bombRainbow[inst] = nil
+	bombHue[inst] = nil
 	destroyBombSA(inst)
 	bombTex[inst] = nil
 	local hid = bombHid[inst]
@@ -2231,8 +2250,6 @@ local function scanBomb(kind, entry)
 		if found == 0 then
 			local nice = (kind == "prank") and "prank bomb (FakeBomb)" or "gold bomb"
 			setNote("No " .. nice .. " seen yet. It recolours when you use the emote.")
-		else
-			setNote("")
 		end
 	end)
 end
@@ -2255,6 +2272,16 @@ local function onBombAdded(d)
 			print("[Voidscope Recolor] new object: " .. d.ClassName .. "  " .. d:GetFullName())
 		end)
 	end
+	-- a bomb mesh just appeared: build every colour for it in the background so picking one is instant
+	if d:IsA("MeshPart") then
+		task.defer(function()
+			if not d.Parent then return end
+			local kind = bombKindOf(d)
+			if not kind then return end
+			local tex = texOf(d)
+			if tex then prebuildBombTex(tex, kind) end
+		end)
+	end
 	if not (bombSel.gold or bombSel.prank) then return end
 	task.defer(function()
 		if not d.Parent then return end
@@ -2275,17 +2302,27 @@ do
 	connect(LocalPlayer.ChildAdded, hookBackpack)
 end
 
-connect(RunService.Heartbeat, function()
-	if not next(bombRainbow) then return end
-	local now = os.clock()
-	if now - lastBombSpin < 0.08 then return end
-	lastBombSpin = now
-	for part, off in pairs(bombRainbow) do
-		if part.Parent then
-			local c = Color3.fromHSV((now * BOMB_RAINBOW_SPEED + off) % 1, 0.9, 1)
-			pcall(function() part.Color = c end)
-			local sa = bombSA[part]
-			if sa and sa.Parent then pcall(function() sa.Color = c end) end
+-- a few seconds after loading, quietly search the whole game (emote folders in ReplicatedStorage etc.) for bombs
+-- and start building their recoloured textures, so even the first time you use the emote it is ready
+task.delay(BOMB_SCAN_DELAY, function()
+	local n = 0
+	for _, d in ipairs(game:GetDescendants()) do
+		n += 1
+		if n % 3000 == 0 then task.wait() end
+		if string.find(string.lower(d.Name), "bomb", 1, true) and not isHumanoidModel(d) then
+			local kind = nameKind(d.Name)
+			if kind then
+				for _, m in ipairs(d:GetDescendants()) do
+					if m:IsA("MeshPart") then
+						local tex = texOf(m)
+						if tex then prebuildBombTex(tex, kind) end
+					end
+				end
+				if d:IsA("MeshPart") then
+					local tex = texOf(d)
+					if tex then prebuildBombTex(tex, kind) end
+				end
+			end
 		end
 	end
 end)
@@ -3104,7 +3141,7 @@ local function buildGui()
 		colorScroll(page, nextFn, " BOMB", function(entry)
 			applyBomb(kind, entry)
 			updateStatus()
-		end, bombButtons[kind], BOMB_COLORS)
+		end, bombButtons[kind], BOMB_LISTS[kind])
 		buildPicker(page, nextFn, function(c, final)
 			if final then
 				applyBomb(kind, { name = "Custom", color = c })
