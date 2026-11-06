@@ -14,7 +14,7 @@ local MENU_OUTLINE = Color3.fromRGB(70, 74, 88)
 local BUTTON_OUTLINE = Color3.fromRGB(120, 125, 142)  -- glass rim around every button
 local BUTTON_SELECTED = Color3.fromRGB(0, 150, 235)
 
--- TRAIL SETTINGS
+-- TRAIL SETTINGS (guns only)
 local TRAIL_LIFETIME = 0.8   -- how long the trail lingers (seconds)
 local TRAIL_WIDTH = 0.4      -- how thick the trail is at the tip (studs)
 local TRAIL_FLIP = false     -- if the trail comes off the wrong end of the gun, set this to true
@@ -23,21 +23,18 @@ local TRAIL_FLIP = false     -- if the trail comes off the wrong end of the gun,
 local MAX_TEX = 512              -- sharper; built once in the background so it doesn't hurt switching (384 = lighter)
 local BUDGET_BACKGROUND = 0.006  -- seconds of each frame used while quietly pre-building textures
 local BUDGET_WAITING = 0.03      -- if you click a style that isn't ready, it gets most of the frame
-local PREBUILD_DELAY = 0         -- start building every style the moment the gun is found
+local PREBUILD_DELAY = 0         -- start building every style the moment the gun / knife is found
 local MARBLE_SCALE = 1.6         -- Diamond / Ruby pattern size: higher = smaller, busier marbling, lower = bigger swirls
 
 -- WHITE SCOPE: if the black ends up on the wrong parts of the gun (body black, detail white), set this to true
 local WHITE_INVERT = false
 
--- BOMB EMOTE SETTINGS (Gold Bomb / Prank Bomb tabs)
-local BOMB_RADIUS = 100          -- studs from you within which a bomb that isn't in your character counts as yours
-local BOMB_SCAN_DELAY = 3        -- seconds after loading before the game is quietly searched for bombs to pre-build their textures
--- Extra names to look for (copy the exact name you see in Dex). Spaces / _ / - and capitals are ignored.
--- The prank bomb emote is called "FakeBomb" so that is built in.
-local BOMB_NAMES = { gold = {}, prank = { "fakebomb" } }
--- set to true, then use the emote: the F9 console prints every new object that appears near you,
--- so you can read the bomb's real name and add it to BOMB_NAMES above
-local BOMB_DEBUG = false
+-- KNIFE SETTINGS
+-- A tool counts as a knife if its name contains one of these words (capitals ignored). Add more if your knife
+-- has a different name, e.g. { "knife", "blade", "dagger" }
+local KNIFE_WORDS = { "knife" }
+local KNIFE_RADIUS = 80          -- studs from you within which a thrown knife counts as yours
+local KNIFE_THROW_WINDOW = 2.5   -- seconds after you use / throw your knife during which a new knife object counts as yours
 
 -- button shine for the special scopes (gold bands / icy diamond facets / ruby)
 local GOLD_SEQ = ColorSequence.new({
@@ -62,6 +59,7 @@ local RUBY_SEQ = ColorSequence.new({
 	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 130, 140)),
 })
 
+-- the colour list (used by both the Scopes tab and the Knives tab)
 local COLORS = {
 	{ name = "Red",        color = Color3.fromRGB(255, 0, 0) },
 	{ name = "Green",      color = Color3.fromRGB(0, 255, 0) },
@@ -71,9 +69,9 @@ local COLORS = {
 	{ name = "Blue",       color = Color3.fromRGB(0, 100, 255) },
 	{ name = "Purple",     color = Color3.fromRGB(160, 32, 240) },
 	{ name = "Cyan",       color = Color3.fromRGB(0, 255, 255) },
-	-- PINK: pastel pink body with the gun's detail painted white (editable image texture)
+	-- PINK: pastel pink body with the detail painted white (editable image texture)
 	{ name = "Pink",       color = Color3.fromRGB(255, 190, 215), mode = "texture", texStyle = "pink" },
-	-- WHITE: pale white body with the gun's detail painted black (editable image texture)
+	-- WHITE: pale white body with the detail painted black (editable image texture)
 	{ name = "White",      color = Color3.fromRGB(238, 238, 244), mode = "texture", texStyle = "white" },
 	{ name = "Rainbow",    color = Color3.fromRGB(255, 60, 200), mode = "texture", texStyle = "rainbow", gradient = true, rainbowFx = true },
 	-- GOLD: polished shiny metal, marbled bands of light and deep gold, warm glints
@@ -86,33 +84,6 @@ local COLORS = {
 	{ name = "Ruby",       color = Color3.fromRGB(190, 15, 40), mode = "texture", texStyle = "ruby", reflectance = 0.12,
 		btnGradient = RUBY_SEQ, effectSeq = RUBY_SEQ },
 }
-
--- COLOURS FOR THE BOMB TABS
--- Every colour FULLY repaints the bomb's texture (editable image): every pixel becomes that colour, and the only
--- thing kept is the texture's light / dark detail. "ramp" (optional) = exact dark -> bright colours for the repaint.
--- Rainbow paints the rainbow onto the texture (static, no colour cycling).
--- Gold Bomb tab = everything except Yellow, Prank Bomb tab = everything.
-local BOMB_COLORS = {
-	{ name = "Red",        color = Color3.fromRGB(255, 0, 0) },
-	{ name = "Green",      color = Color3.fromRGB(0, 255, 0) },
-	{ name = "Black",      color = Color3.fromRGB(0, 0, 0),
-		ramp = { { 6, 6, 8 }, { 22, 22, 26 }, { 40, 40, 46 }, { 66, 66, 74 }, { 100, 100, 110 } } },
-	{ name = "Orange",     color = Color3.fromRGB(255, 128, 0) },
-	{ name = "Yellow",     color = Color3.fromRGB(255, 255, 0) },
-	{ name = "Blue",       color = Color3.fromRGB(0, 100, 255) },
-	{ name = "Purple",     color = Color3.fromRGB(160, 32, 240) },
-	{ name = "Cyan",       color = Color3.fromRGB(0, 255, 255) },
-	{ name = "Pink",       color = Color3.fromRGB(255, 105, 180),
-		ramp = { { 175, 40, 108 }, { 235, 78, 148 }, { 255, 105, 180 }, { 255, 160, 208 }, { 255, 215, 236 } } },
-	{ name = "White",      color = Color3.fromRGB(238, 238, 244),
-		ramp = { { 188, 188, 198 }, { 216, 216, 225 }, { 238, 238, 244 }, { 249, 249, 253 }, { 255, 255, 255 } } },
-	{ name = "Rainbow",    color = Color3.fromRGB(255, 60, 200), texStyle = "rainbow", gradient = true, rainbowFx = true },
-}
-local BOMB_LISTS = { gold = {}, prank = {} }
-for _, e in ipairs(BOMB_COLORS) do
-	table.insert(BOMB_LISTS.prank, e)
-	if e.name ~= "Yellow" then table.insert(BOMB_LISTS.gold, e) end
-end
 
 local RAINBOW_SPIN = 0.08
 local RAINBOW = { name = "Chroma", color = Color3.fromRGB(255, 80, 200), mode = "rainbow" }
@@ -166,40 +137,77 @@ Wr25gAa1TQV0aFr3LGLSCmDKp+1TM5eZJCOxODD3IK++gv6l4y6npWWVZGwyv3Fhoa85eKHzO1h0H1u2
 ]=]
 
 local env = (getgenv and getgenv()) or _G
+-- every edited image is kept alive here so the recolours keep working after the script is closed
+local KEEP = env.VoidscopeKeep or {}
+env.VoidscopeKeep = KEEP
 if env.VoidscopeRecolorCleanup then
 	pcall(env.VoidscopeRecolorCleanup)
 end
 
-local selected = nil -- current entry from COLORS, or nil for default
+local selected = nil -- the colour entry of the CURRENT context (guns by default, see withCtx below)
 local shotUntil = 0
 local shotCount = 0
 local conns = {}
 local originals = setmetatable({}, { __mode = "k" }) -- inst -> { prop = originalValue }
-local hooked = setmetatable({}, { __mode = "k" })    -- tools we've hooked
+local hooked = setmetatable({}, { __mode = "k" })    -- guns we've hooked
 local guarded = setmetatable({}, { __mode = "k" })   -- effects / sounds we already listen to
 local texWatched = setmetatable({}, { __mode = "k" })
 local applied = setmetatable({}, { __mode = "k" })    -- meshPart -> edited texture image it is showing right now
 local surfaces = setmetatable({}, { __mode = "k" })  -- meshPart -> the SurfaceAppearance currently showing
 local saCache = setmetatable({}, { __mode = "k" })   -- meshPart -> { tint = SA, rainbow = SA, gold = SA, ... } (one per style, swapped by re-parenting)
 local imgOf = setmetatable({}, { __mode = "k" })     -- SurfaceAppearance -> the edited image it was built from
+local ours = setmetatable({}, { __mode = "k" })      -- SurfaceAppearances made by this run of the script
 local overlays = setmetatable({}, { __mode = "k" })  -- meshPart -> Highlight we added (colour wash)
 local watchedTargets = setmetatable({}, { __mode = "k" })
 local rainbowT = setmetatable({}, { __mode = "k" })       -- part -> 0..1, where it sits along the gun
 local glassed = setmetatable({}, { __mode = "k" })       -- parts currently showing our glass look
 local glassGuarded = setmetatable({}, { __mode = "k" })  -- parts we already watch for the game making them solid again
-local glassOverlay = false  -- the "See-through" switch
-local trailOn = false       -- the "Trail" switch
+local glassOverlay = false  -- the "See-through" switch of the CURRENT context
+local trailOn = false       -- the "Trail" switch (guns only)
 local trails = setmetatable({}, { __mode = "k" })        -- tool -> { trail, a0, a1 }
 local unglassing = false
 local chromed = setmetatable({}, { __mode = "k" })       -- meshes currently showing the chrome look
 local flatSpread = setmetatable({}, { __mode = "k" })    -- parts of a gun that is a single piece
-local sheens = setmetatable({}, { __mode = "k" })        -- gun part -> the two glow lights we added to it
+local sheens = setmetatable({}, { __mode = "k" })        -- part -> the two glow lights we added to it
 local lastSpin = 0
 local hipQueued = false
 
 local gui, gunLabel, hipLabel, statusLabel, noteLabel
 local glassToggleBtn, glassToggleBg, trailToggleBtn, trailToggleBg
+local knifeGlassBtn, knifeGlassBg
 local buttons = {}
+local knifeButtons = {}
+
+---------------------------------------------------------------------
+-- CONTEXTS: the Scopes tab ("gun") and the Knives tab ("knife") each have their own colour and see-through switch.
+-- All the painting code reads the working variables `selected` / `glassOverlay`, so withCtx swaps them in for
+-- the duration of a call (it never yields). At rest the working variables always belong to the gun.
+-- partCtx remembers which parts belong to a knife, so later callbacks know which colour to use.
+---------------------------------------------------------------------
+local ctxs = { gun = { sel = nil, glass = false }, knife = { sel = nil, glass = false } }
+local activeCtx = "gun"
+local partCtx = setmetatable({}, { __mode = "k" })
+
+local function switchCtx(name)
+	if activeCtx == name then return end
+	ctxs[activeCtx].sel = selected
+	ctxs[activeCtx].glass = glassOverlay
+	activeCtx = name
+	selected = ctxs[name].sel
+	glassOverlay = ctxs[name].glass
+end
+
+local function withCtx(name, fn)
+	local prev = activeCtx
+	switchCtx(name)
+	local ok, err = pcall(fn)
+	switchCtx(prev)
+	if not ok then warn("[Voidscope Recolor] " .. tostring(err)) end
+end
+
+local function ownedBy(inst, name)
+	return (partCtx[inst] or "gun") == name
+end
 
 local function connect(signal, fn)
 	local c = signal:Connect(fn)
@@ -324,15 +332,25 @@ local function colorFor(inst)
 	return selected and selected.color or Color3.new(1, 1, 1)
 end
 
+-- Chroma (animated rainbow): runs for guns and knives
 connect(RunService.Heartbeat, function()
-	if RAINBOW_SPIN == 0 or not (selected and selected.mode == "rainbow") then return end
+	if RAINBOW_SPIN == 0 then return end
 	local now = os.clock()
 	if now - lastSpin < 0.08 then return end
 	lastSpin = now
-	for mp in pairs(rainbowT) do
-		local sa = surfaces[mp]
-		if sa and sa.Parent then
-			sa.Color = colorFor(mp)
+	for _, name in ipairs({ "gun", "knife" }) do
+		local sel = (name == "gun") and selected or ctxs.knife.sel
+		if sel and sel.mode == "rainbow" then
+			withCtx(name, function()
+				for mp in pairs(rainbowT) do
+					if ownedBy(mp, name) then
+						local sa = surfaces[mp]
+						if sa and sa.Parent then
+							sa.Color = colorFor(mp)
+						end
+					end
+				end
+			end)
 		end
 	end
 end)
@@ -378,6 +396,16 @@ local function hideSurfaces(mp)
 	applied[mp] = nil
 end
 
+-- appearances left on a mesh by an earlier run of the script (the effect stays after closing) get cleared away
+-- so the new run's look is the one that shows
+local function purgeStray(mp)
+	for _, c in ipairs(mp:GetChildren()) do
+		if c.Name == "VSSurface" and c:IsA("SurfaceAppearance") and not ours[c] then
+			pcall(function() c:Destroy() end)
+		end
+	end
+end
+
 -- plain colour tint (Red, Green, Chroma...). Uses its own appearance, never mixed with the edited-image ones
 local function setSurfaceTint(mp, color)
 	local tex
@@ -398,6 +426,7 @@ local function setSurfaceTint(mp, color)
 			pcall(function() sa:Destroy() end)
 			return "fail"
 		end
+		ours[sa] = true
 		cache.tint = sa
 	end
 	if not pcall(function() sa.Color = color end) then
@@ -503,7 +532,6 @@ end
 local AssetService = game:GetService("AssetService")
 local pinkCache = {}                     -- "style|texture id" -> { state, image, waiters }
 local TEX_STYLES = {}
-local makeBombStyle                      -- filled in inside the block below: builds a full-recolour style for a bomb colour
 -- (Luau allows only 200 local variables per scope, so the texture-style helpers live in their own block)
 do
 -- Rainbow texture settings (matched to the reference photo: near-black body, vivid bright parts)
@@ -565,21 +593,6 @@ TEX_STYLES.rainbow = (
 	end
 )
 
--- BOMB RAINBOW: the same rainbow colours but bright, painted over the bomb's own detail (static, no cycling)
-TEX_STYLES.bombrainbow = function(stats)
-	local lo, hi = stats.q(0.03), stats.q(0.97)
-	local span = math.max(hi - lo, 0.05)
-	return function(lum, u, v)
-		local rel = (lum - lo) / span
-		if rel < 0 then rel = 0 elseif rel > 1 then rel = 1 end
-		local s = u * 0.6 + v * 0.4
-		if s < 0 then s = 0 elseif s > 1 then s = 1 end
-		local k = math.floor(s * 255) + 1
-		local shade = 0.55 + 0.45 * rel
-		return GR[k] * shade, GG[k] * shade, GB[k] * shade
-	end
-end
-
 local function buildRamp(stops)
 	local R, G, B = {}, {}, {}
 	for k = 1, 256 do
@@ -594,32 +607,6 @@ local function buildRamp(stops)
 	return R, G, B
 end
 
--- BOMB FULL RECOLOUR: every pixel is repainted in the chosen colour. Dark parts of the texture become a deep
--- shade of the colour, bright parts a light shade of it, so the texture's detail stays but the colour is 100% new
--- (nothing of the old colours is left, this is not a tint).
-makeBombStyle = function(entry)
-	local stops = entry.ramp
-	if not stops then
-		local c = entry.color
-		local r, g, b = c.R * 255, c.G * 255, c.B * 255
-		local function mul(f) return { r * f, g * f, b * f } end
-		local function lift(f) return { r + (255 - r) * f, g + (255 - g) * f, b + (255 - b) * f } end
-		stops = { mul(0.3), mul(0.62), { r, g, b }, lift(0.3), lift(0.55) }
-	end
-	local R, G, B = buildRamp(stops)
-	return function(stats)
-		local lo, hi = stats.q(0.03), stats.q(0.97)
-		local span = math.max(hi - lo, 0.05)
-		local floor = math.floor
-		return function(lum)
-			local rel = (lum - lo) / span
-			if rel < 0 then rel = 0 elseif rel > 1 then rel = 1 end
-			local k = floor((0.12 + 0.88 * rel) * 255) + 1
-			return R[k], G[k], B[k]
-		end
-	end
-end
-
 local GOLD_R, GOLD_G, GOLD_B = buildRamp({
 	{ 90, 40, 0 }, { 170, 80, 5 }, { 225, 130, 10 }, { 255, 175, 25 }, { 255, 215, 80 }, { 255, 245, 170 },
 })
@@ -631,11 +618,11 @@ local DIA_R, DIA_G, DIA_B = buildRamp({
 local RUBY_R, RUBY_G, RUBY_B = buildRamp({
 	{ 20, 0, 4 }, { 85, 2, 16 }, { 150, 8, 30 }, { 205, 22, 44 }, { 245, 60, 75 }, { 255, 150, 158 },
 })
--- PINK: dark parts of the gun = pastel pink, the gun's detail / bright parts fade up to pure white
+-- PINK: dark parts = pastel pink, the detail / bright parts fade up to pure white
 local PINK_R, PINK_G, PINK_B = buildRamp({
 	{ 244, 160, 196 }, { 255, 184, 212 }, { 255, 208, 228 }, { 255, 235, 244 }, { 255, 255, 255 },
 })
--- WHITE: the gun's body = pale white, the gun's detail / bright parts go down to black
+-- WHITE: the body = pale white, the detail / bright parts go down to black
 local WHITE_R, WHITE_G, WHITE_B = buildRamp({
 	{ 238, 238, 244 }, { 236, 236, 242 }, { 226, 226, 232 }, { 150, 150, 158 }, { 45, 45, 50 }, { 6, 6, 8 },
 })
@@ -673,7 +660,7 @@ local function makeMarbleStyle(R, G, B, strength, glintLevel)
 end
 
 TEX_STYLES.gold = makeMarbleStyle(GOLD_R, GOLD_G, GOLD_B, 0.45, 0.992)
--- gem look: soft blotches + thin veins from the noise fields, the gun's own detail on top,
+-- gem look: soft blotches + thin veins from the noise fields, the item's own detail on top,
 -- soft highlights on bright detail and tiny sparkles
 local function makeGemStyle(R, G, B, o)
 	return function(stats)
@@ -720,14 +707,14 @@ TEX_STYLES.pink = function(stats)
 	return function(lum)
 		local rel = (lum - lo) / span
 		if rel < 0 then rel = 0 elseif rel > 1 then rel = 1 end
-		-- slight curve so the gun's detail pops out white instead of everything going pale
+		-- slight curve so the detail pops out white instead of everything going pale
 		local t = rel * rel * 0.55 + rel * 0.45
 		local k = floor(t * 255) + 1
 		return PINK_R[k], PINK_G[k], PINK_B[k]
 	end
 end
 
--- WHITE: pale white body, the gun's detail (the bright parts of its texture) painted black
+-- WHITE: pale white body, the detail (the bright parts of its texture) painted black
 TEX_STYLES.white = function(stats)
 	local lo, hi = stats.q(0.05), stats.q(0.95)
 	local span = math.max(hi - lo, 0.05)
@@ -916,6 +903,7 @@ local function paintSource(src, makePixel, budgetFn)
 		end
 		local img = AssetService:CreateEditableImage({ Size = Vector2.new(w, h) })
 		img:WritePixelsBuffer(Vector2.zero, Vector2.new(w, h), out)
+		table.insert(KEEP, img) -- keeps the image alive so the recolour stays after the script is closed
 		image = img
 	end)
 	if not ok then return nil, "couldn't edit the texture (" .. tostring(err) .. ")" end
@@ -952,6 +940,7 @@ local function applyEdited(mp, image, style)
 			pcall(function() sa:Destroy() end)
 			return false
 		end
+		ours[sa] = true
 		cache[style] = sa
 		imgOf[sa] = image
 	end
@@ -1005,8 +994,12 @@ local function runJobs()
 				setNote(image and "" or ("Texture edit failed: " .. tostring(why)))
 			end
 			for w in pairs(waiting) do
-				if selected and selected.mode == "texture" and typeof(w) == "Instance" and w.Parent then
-					pcall(tintMesh, w, colorFor(w))
+				if typeof(w) == "Instance" and w.Parent then
+					withCtx(partCtx[w] or "gun", function()
+						if selected and selected.mode == "texture" then
+							tintMesh(w, colorFor(w))
+						end
+					end)
 				end
 			end
 		end
@@ -1037,6 +1030,7 @@ function tintMesh(mp, color)
 	end
 	removeSheen(mp)
 	unchromeMesh(mp)
+	purgeStray(mp)
 
 	if selected ~= nil and selected.mode == "texture" then
 		local okTex, tex = pcall(function() return mp.TextureID end)
@@ -1081,7 +1075,7 @@ function tintMesh(mp, color)
 	end
 end
 
--- builds every texture style for the gun in the background, so picking a scope is instant
+-- builds every texture style for the gun / knife in the background, so picking a colour is instant
 local function prebuildTextures(tool)
 	for _, d in ipairs(tool:GetDescendants()) do
 		if d:IsA("MeshPart") then
@@ -1099,11 +1093,13 @@ local function watchTexture(mp)
 	if texWatched[mp] then return end
 	texWatched[mp] = true
 	connect(mp:GetPropertyChangedSignal("TextureID"), function()
-		if selected then tintMesh(mp, colorFor(mp)) end
+		withCtx(partCtx[mp] or "gun", function()
+			if selected then tintMesh(mp, colorFor(mp)) end
+		end)
 	end)
 end
 
--- TRAIL
+-- TRAIL (guns only)
 local function withAxis(vec, axis, value)
 	return Vector3.new(axis == "X" and value or vec.X, axis == "Y" and value or vec.Y, axis == "Z" and value or vec.Z)
 end
@@ -1360,9 +1356,11 @@ local function applyGlass(inst)
 	if not glassGuarded[inst] then
 		glassGuarded[inst] = true
 		connect(inst:GetPropertyChangedSignal("Transparency"), function()
-			if not unglassing and glassWanted() and inst.Transparency < glassT() - 0.01 then
-				glassify(inst)
-			end
+			withCtx(partCtx[inst] or "gun", function()
+				if not unglassing and glassWanted() and inst.Transparency < glassT() - 0.01 then
+					glassify(inst)
+				end
+			end)
 		end)
 	end
 	if inst.Transparency < glassT() - 0.01 then
@@ -1372,49 +1370,66 @@ local function applyGlass(inst)
 	end
 end
 
-local function unglassAll()
+-- name = "gun" or "knife": only that tab's parts are touched
+local function unglassAll(name)
 	unglassing = true
 	for inst in pairs(glassed) do
-		local saved = originals[inst]
-		if saved then
-			pcall(function()
-				if saved.Transparency ~= nil and inst.Transparency < 0.95 then
-					inst.Transparency = saved.Transparency
-				end
-				if saved.Material ~= nil then inst.Material = saved.Material end
-			end)
-			saved.Transparency = nil
-			saved.Material = nil
+		if ownedBy(inst, name) then
+			local saved = originals[inst]
+			if saved then
+				pcall(function()
+					if saved.Transparency ~= nil and inst.Transparency < 0.95 then
+						inst.Transparency = saved.Transparency
+					end
+					if saved.Material ~= nil then inst.Material = saved.Material end
+				end)
+				saved.Transparency = nil
+				saved.Material = nil
+			end
+			glassed[inst] = nil
 		end
-		glassed[inst] = nil
 	end
 	unglassing = false
 end
 
-local function restoreAll()
-	unglassAll()
-	for tool in pairs(trails) do removeTrail(tool) end
-	for part in pairs(sheens) do removeSheen(part) end
-	for mp in pairs(chromed) do chromed[mp] = nil end
+local function restoreAll(name)
+	unglassAll(name)
+	if name == "gun" then
+		for tool in pairs(trails) do removeTrail(tool) end
+	end
+	for part in pairs(sheens) do
+		if ownedBy(part, name) then removeSheen(part) end
+	end
+	for mp in pairs(chromed) do
+		if ownedBy(mp, name) then chromed[mp] = nil end
+	end
 	for inst, saved in pairs(originals) do
-		for prop, v in pairs(saved) do
-			pcall(function() inst[prop] = v end)
+		if ownedBy(inst, name) then
+			for prop, v in pairs(saved) do
+				pcall(function() inst[prop] = v end)
+			end
+			originals[inst] = nil
 		end
 	end
-	for k in pairs(originals) do
-		originals[k] = nil
+	for mp in pairs(overlays) do
+		if ownedBy(mp, name) then removeOverlay(mp) end
 	end
-	for mp in pairs(overlays) do removeOverlay(mp) end
-	for mp in pairs(applied) do applied[mp] = nil end
+	for mp in pairs(applied) do
+		if ownedBy(mp, name) then applied[mp] = nil end
+	end
 	for mp, cache in pairs(saCache) do
-		for _, o in pairs(cache) do
-			pcall(function() o:Destroy() end)
+		if ownedBy(mp, name) then
+			for _, o in pairs(cache) do
+				pcall(function() o:Destroy() end)
+			end
+			saCache[mp] = nil
 		end
-		saCache[mp] = nil
 	end
 	for mp, sa in pairs(surfaces) do
-		pcall(function() sa:Destroy() end)
-		surfaces[mp] = nil
+		if ownedBy(mp, name) then
+			pcall(function() sa:Destroy() end)
+			surfaces[mp] = nil
+		end
 	end
 end
 
@@ -1487,18 +1502,20 @@ local function guardEffect(inst)
 	if inst.Name == "VSTrail" then return end
 	guarded[inst] = true
 	connect(inst:GetPropertyChangedSignal("Color"), function()
-		if not selected then return end
-		local fine
-		if selected.mode == "rainbow" or selected.rainbowFx then
-			fine = #inst.Color.Keypoints == #RAINBOW_SEQUENCE.Keypoints
-		elseif selected.effectSeq then
-			fine = #inst.Color.Keypoints == #selected.effectSeq.Keypoints
-		else
-			fine = seqIsColor(inst.Color, colorFor(inst))
-		end
-		if not fine then
-			paint(inst, colorFor(inst), false)
-		end
+		withCtx(partCtx[inst] or "gun", function()
+			if not selected then return end
+			local fine
+			if selected.mode == "rainbow" or selected.rainbowFx then
+				fine = #inst.Color.Keypoints == #RAINBOW_SEQUENCE.Keypoints
+			elseif selected.effectSeq then
+				fine = #inst.Color.Keypoints == #selected.effectSeq.Keypoints
+			else
+				fine = seqIsColor(inst.Color, colorFor(inst))
+			end
+			if not fine then
+				paint(inst, colorFor(inst), false)
+			end
+		end)
 	end)
 end
 
@@ -1516,9 +1533,10 @@ local function paintGun(tool)
 	return effects
 end
 
-local function gunAssetIds()
+-- every mesh / texture id used by a set of tools (used to find the copy of a gun / knife shown on the body)
+local function assetIdsOf(set_)
 	local ids = {}
-	for tool in pairs(hooked) do
+	for tool in pairs(set_) do
 		for _, d in ipairs(tool:GetDescendants()) do
 			if d:IsA("MeshPart") then
 				local okt, tex = pcall(function() return d.TextureID end)
@@ -1574,7 +1592,7 @@ local function paintHip()
 		end
 		if targetRef and wantsSheen() then addSheen(targetRef) end
 	end
-	local ids = gunAssetIds()
+	local ids = assetIdsOf(hooked)
 	local matched = {}
 	for _, d in ipairs(char:GetDescendants()) do
 		if d:IsA("MeshPart") and not done[d] and not d:FindFirstAncestorOfClass("Tool") then
@@ -1599,7 +1617,7 @@ local function hipGroups()
 	if not char then return groups end
 	local target = hipTarget(char)
 	if target then groups["HIPTARGET"] = partsUnder(target) end
-	local ids = gunAssetIds()
+	local ids = assetIdsOf(hooked)
 	local matched = {}
 	for _, d in ipairs(char:GetDescendants()) do
 		if d:IsA("MeshPart") and not d:FindFirstAncestorOfClass("Tool") and not (target and d:IsDescendantOf(target)) then
@@ -1678,6 +1696,147 @@ local function hookRef(ref)
 	connect(ref:GetPropertyChangedSignal("Value"), queueHipRefresh)
 end
 
+---------------------------------------------------------------------
+-- KNIVES
+-- Any Tool whose name contains a word from KNIFE_WORDS is a knife. Its parts (and the copy shown on your body when
+-- it is not equipped, and the knife object that flies out when you throw it) get the colour picked on the Knives tab.
+-- Knives have their own colour + see-through switch, completely separate from the scopes. No trail.
+---------------------------------------------------------------------
+local knifeHooked = setmetatable({}, { __mode = "k" })
+local knifeUntil = 0
+local knifeHipQueued = false
+
+local function nameIsKnife(name)
+	local n = string.lower(name)
+	for _, w in ipairs(KNIFE_WORDS) do
+		if string.find(n, string.lower(w), 1, true) then return true end
+	end
+	return false
+end
+
+local function isKnife(inst)
+	return inst:IsA("Tool") and nameIsKnife(inst.Name)
+end
+
+local function openKnifeWindow()
+	knifeUntil = os.clock() + KNIFE_THROW_WINDOW
+end
+
+-- (runs inside the knife context) paints one knife tool
+local function paintKnifeTool(tool)
+	if not selected then return end
+	for _, d in ipairs(tool:GetDescendants()) do partCtx[d] = "knife" end
+	local ref = mapRainbow(partsUnder(tool))
+	for _, d in ipairs(tool:GetDescendants()) do
+		paint(d, colorFor(d), false)
+		guardEffect(d)
+	end
+	if ref and wantsSheen() then addSheen(ref) end
+end
+
+local function knifeHipTarget(char)
+	for _, c in ipairs(char:GetChildren()) do
+		if c:IsA("ObjectValue") and nameIsKnife(c.Name) then
+			local t = c.Value
+			if t and t ~= char and not char:IsDescendantOf(t)
+				and not t:IsA("Humanoid") and not t:FindFirstChildOfClass("Humanoid") then
+				return t
+			end
+		end
+	end
+	return nil
+end
+
+-- (runs inside the knife context) paints the copy of the knife shown on your body when it isn't equipped
+local function paintKnifeHip()
+	local char = LocalPlayer.Character
+	if not (selected and char) then return end
+	local done = {}
+	local function paintOne(d)
+		if done[d] then return end
+		done[d] = true
+		partCtx[d] = "knife"
+		paint(d, colorFor(d), false)
+		guardEffect(d)
+	end
+	local target = knifeHipTarget(char)
+	if target then
+		partCtx[target] = "knife"
+		for _, d in ipairs(target:GetDescendants()) do partCtx[d] = "knife" end
+		local ref = mapRainbow(partsUnder(target))
+		paintOne(target)
+		for _, d in ipairs(target:GetDescendants()) do paintOne(d) end
+		if ref and wantsSheen() then addSheen(ref) end
+	end
+	local ids = assetIdsOf(knifeHooked)
+	local matched = {}
+	for _, d in ipairs(char:GetDescendants()) do
+		if d:IsA("MeshPart") and not done[d] and not d:FindFirstAncestorOfClass("Tool") then
+			local okt, tex = pcall(function() return d.TextureID end)
+			local okm, mesh = pcall(function() return d.MeshId end)
+			if (okt and tex ~= "" and ids[tex]) or (okm and mesh ~= "" and ids[mesh]) then
+				table.insert(matched, d)
+			end
+		end
+	end
+	for _, d in ipairs(matched) do partCtx[d] = "knife" end
+	local ref2 = mapRainbow(matched)
+	for _, d in ipairs(matched) do paintOne(d) end
+	if ref2 and wantsSheen() then addSheen(ref2) end
+end
+
+local function refreshKnifeHip()
+	if ctxs.knife.sel then withCtx("knife", paintKnifeHip) end
+end
+
+local function queueKnifeHip()
+	if knifeHipQueued then return end
+	knifeHipQueued = true
+	task.defer(function()
+		knifeHipQueued = false
+		refreshKnifeHip()
+	end)
+end
+
+local function hookKnifeRef(ref)
+	if guarded[ref] then return end
+	guarded[ref] = true
+	connect(ref:GetPropertyChangedSignal("Value"), queueKnifeHip)
+end
+
+local function hookKnife(tool)
+	if knifeHooked[tool] then return end
+	knifeHooked[tool] = true
+	print("[Voidscope Recolor] found knife: " .. tool:GetFullName())
+	task.delay(PREBUILD_DELAY, prebuildTextures, tool) -- builds every texture style quietly in the background
+	if ctxs.knife.sel then
+		withCtx("knife", function() paintKnifeTool(tool) end)
+		refreshKnifeHip()
+	end
+	connect(tool.DescendantAdded, function(d)
+		task.defer(function()
+			if ctxs.knife.sel and d.Parent then
+				withCtx("knife", function()
+					partCtx[d] = "knife"
+					paint(d, colorFor(d), false)
+					guardEffect(d)
+				end)
+			end
+		end)
+	end)
+	connect(tool.Activated, openKnifeWindow)
+	connect(tool.Equipped, function()
+		task.delay(0.3, function()
+			if ctxs.knife.sel then
+				withCtx("knife", function() paintKnifeTool(tool) end)
+			end
+		end)
+	end)
+	connect(tool.Unequipped, function()
+		task.delay(0.3, refreshKnifeHip)
+	end)
+end
+
 local function watchCharacter(char)
 	if not char then return end
 	connect(char.DescendantAdded, function(d)
@@ -1687,13 +1846,23 @@ local function watchCharacter(char)
 		elseif selected and d:IsA("MeshPart") then
 			queueHipRefresh()
 		end
+		if d:IsA("ObjectValue") and nameIsKnife(d.Name) then
+			hookKnifeRef(d)
+			queueKnifeHip()
+		elseif ctxs.knife.sel and d:IsA("MeshPart") then
+			queueKnifeHip()
+		end
 	end)
 	local ref = char:FindFirstChild("DisplayRefGun")
 	if ref and ref:IsA("ObjectValue") then hookRef(ref) end
+	for _, c in ipairs(char:GetChildren()) do
+		if c:IsA("ObjectValue") and nameIsKnife(c.Name) then hookKnifeRef(c) end
+	end
 end
 
 local function isGun(inst)
 	if not inst:IsA("Tool") then return false end
+	if nameIsKnife(inst.Name) then return false end
 	local n = string.lower(inst.Name)
 	return n == "gun" or string.find(n, "voidscope", 1, true) ~= nil
 end
@@ -1766,12 +1935,17 @@ end
 
 local function scan(container)
 	if not container then return end
-	for _, child in ipairs(container:GetChildren()) do
-		if isGun(child) then hookGun(child) end
+	local function consider(child)
+		if isKnife(child) then
+			hookKnife(child)
+		elseif isGun(child) then
+			hookGun(child)
+		end
 	end
-	connect(container.ChildAdded, function(child)
-		if isGun(child) then hookGun(child) end
-	end)
+	for _, child in ipairs(container:GetChildren()) do
+		consider(child)
+	end
+	connect(container.ChildAdded, consider)
 end
 
 scan(LocalPlayer.Character)
@@ -1790,7 +1964,10 @@ connect(UserInputService.InputBegan, function(input, processed)
 		local char = LocalPlayer.Character
 		if char then
 			for _, child in ipairs(char:GetChildren()) do
-				if isGun(child) then
+				if isKnife(child) then
+					openKnifeWindow()
+					break
+				elseif isGun(child) then
 					openShotWindow()
 					break
 				end
@@ -1860,473 +2037,46 @@ connect(Workspace.DescendantAdded, function(d)
 	end)
 end)
 
----------------------------------------------------------------------
--- BOMB EMOTES (Gold Bomb / Prank Bomb tabs)
--- Finds anything named like "GoldBomb" / "Gold Bomb" / "FakeBomb" (and anything inside it),
--- in your character, your backpack, or near you in the workspace, and FULLY recolours it.
--- Full recolour = the bomb's texture is repainted pixel by pixel with an editable image in the new colour, so none of
--- the old colour is left. Only the texture's light / dark detail is kept (shown as lighter / darker shades of the colour).
--- Speed: like the scopes, every colour for a bomb's texture is built quietly in the background the moment the bomb is
--- first seen (and the game is searched for bombs a few seconds after loading), so picking a colour is instant.
--- No hue cycling, no tinting. Uses its own save-slot so resetting the scope never touches the bombs and vice versa.
----------------------------------------------------------------------
--- these five are used by the menu / cleanup further down; everything else stays inside the block
-local BOMB_KINDS, bombSel, bombButtons, resetBomb, applyBomb
-do
-BOMB_KINDS = { "gold", "prank" }
-bombSel = {}                                         -- kind -> selected colour entry
-local bombTouched = {
-	gold = setmetatable({}, { __mode = "k" }),
-	prank = setmetatable({}, { __mode = "k" }),
-}
-bombButtons = { gold = {}, prank = {} }              -- kind -> { colour name -> button background }
-local bombOrig = setmetatable({}, { __mode = "k" })  -- inst -> { prop = original value }
-local bombHue = setmetatable({}, { __mode = "k" })   -- plain part -> fixed random hue (Rainbow on parts with no texture)
-local bombGuarded = setmetatable({}, { __mode = "k" })
-local bombPartGuard = setmetatable({}, { __mode = "k" })
-local bombOwn = setmetatable({}, { __mode = "k" })   -- roots we already decided are yours
-local bombScan = { gold = 0, prank = 0 }
-local bombPrebuilt = {}                              -- "kind|texture id" -> true once every colour was queued
-
-local function bset(inst, prop, value)
-	local saved = bombOrig[inst]
-	if not saved then
-		saved = {}
-		bombOrig[inst] = saved
-	end
-	if saved[prop] == nil then
-		local ok, v = pcall(function() return inst[prop] end)
-		if ok then saved[prop] = v end
-	end
-	return (pcall(function() inst[prop] = value end))
-end
-
-local function norm(s)
-	return string.lower((string.gsub(s, "[%s_%-]", "")))
-end
-
-local function nameKind(name)
-	local n = norm(name)
-	for _, kind in ipairs(BOMB_KINDS) do
-		for _, w in ipairs(BOMB_NAMES[kind] or {}) do
-			local nw = norm(w)
-			if nw ~= "" and string.find(n, nw, 1, true) then return kind end
-		end
-	end
-	if string.find(n, "bomb", 1, true) then
-		if string.find(n, "prank", 1, true) or string.find(n, "fake", 1, true) then return "prank" end
-		if string.find(n, "gold", 1, true) then return "gold" end
-	end
-	return nil
-end
-
-local function isHumanoidModel(inst)
-	return inst:IsA("Model") and inst:FindFirstChildOfClass("Humanoid") ~= nil
-end
-
--- walks up from inst looking for a "gold bomb" / "fake bomb" named parent (never tests a player's own character name)
-local function bombKindOf(inst)
-	local cur, depth = inst, 0
-	while cur and cur ~= Workspace and cur ~= game and depth < 14 do
-		if isHumanoidModel(cur) then return nil end
-		local k = nameKind(cur.Name)
-		if k then return k, cur end
+-- a knife object that appears in the world (the one that flies out when you throw it) gets the knife colour too
+local function knifeRootOf(d)
+	local cur, depth = d, 0
+	while cur and cur ~= Workspace and cur ~= game and depth < 8 do
+		if cur:IsA("Model") and cur:FindFirstChildOfClass("Humanoid") then return nil end
+		if nameIsKnife(cur.Name) then return cur end
 		cur = cur.Parent
 		depth += 1
 	end
 	return nil
 end
 
-local function anchorPos(root)
-	local ok, pos = pcall(function() return root:GetPivot().Position end)
-	if ok and pos then return pos end
-	local p = root:FindFirstChildWhichIsA("BasePart", true)
-	return p and p.Position or nil
-end
-
-local function bombIsYours(root)
-	if bombOwn[root] then return true end
+local function knifeIsYours(root)
 	local char = LocalPlayer.Character
+	if char and root:IsDescendantOf(char) then return true end
 	local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
-	local mine = (char and root:IsDescendantOf(char)) or (bp and root:IsDescendantOf(bp)) or root:IsDescendantOf(LocalPlayer)
-	if not mine then
-		local other = characterOf(root)
-		if other and other ~= char then return false end
-		local rootPart = char and char:FindFirstChild("HumanoidRootPart")
-		local pos = anchorPos(root)
-		if rootPart and pos and (pos - rootPart.Position).Magnitude > BOMB_RADIUS then return false end
-	end
-	bombOwn[root] = true
+	if bp and root:IsDescendantOf(bp) then return true end
+	if characterOf(root) then return false end -- somebody else's
+	if os.clock() > knifeUntil then return false end -- you didn't just throw one
+	local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+	local ok, pos = pcall(function() return root:GetPivot().Position end)
+	if rootPart and ok and pos and (pos - rootPart.Position).Magnitude > KNIFE_RADIUS then return false end
 	return true
 end
 
-local function isRainbowEntry(entry)
-	return entry.texStyle == "rainbow" or entry.mode == "rainbow"
-end
-
-local function bombWantSeq(entry)
-	if isRainbowEntry(entry) then return RAINBOW_SEQUENCE end
-	return entry.effectSeq or ColorSequence.new(entry.color)
-end
-
--- the texture style (full recolour) that belongs to a bomb colour; made the first time it is needed
-local function styleFor(entry)
-	if isRainbowEntry(entry) then return "bombrainbow" end
-	local c = entry.color
-	local key = string.format("bomb_%s_%02x%02x%02x", entry.name, math.floor(c.R * 255 + 0.5),
-		math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
-	if not TEX_STYLES[key] then TEX_STYLES[key] = makeBombStyle(entry) end
-	return key
-end
-
--- queues every colour of that bomb's tab for this texture, in the background (the one you pick always jumps the queue)
-local function prebuildBombTex(tex, kind)
-	local mark = kind .. "|" .. tex
-	if bombPrebuilt[mark] then return end
-	bombPrebuilt[mark] = true
-	for _, e in ipairs(BOMB_LISTS[kind]) do
-		ensureTexture(styleFor(e), tex)
-	end
-end
-
-local function guardBombEffect(inst, kind)
-	if bombGuarded[inst] then return end
-	bombGuarded[inst] = true
-	connect(inst:GetPropertyChangedSignal("Color"), function()
-		local e = bombSel[kind]
-		if not e then return end
-		local want = bombWantSeq(e)
-		local cur = inst.Color
-		if #cur.Keypoints ~= #want.Keypoints or not colorsClose(cur.Keypoints[1].Value, want.Keypoints[1].Value) then
-			bset(inst, "Color", want)
-		end
-	end)
-end
-
--- if the game paints a plain (texture-less) bomb part back to its own colour, paint it again
-local function guardBombPart(inst, kind)
-	if bombPartGuard[inst] then return end
-	bombPartGuard[inst] = true
-	connect(inst:GetPropertyChangedSignal("Color"), function()
-		local e = bombSel[kind]
-		if not e or isRainbowEntry(e) then return end
-		if bombTouched[kind][inst] and not colorsClose(inst.Color, e.color) then
-			bset(inst, "Color", e.color)
-		end
-	end)
-end
-
-local bombSA = setmetatable({}, { __mode = "k" })    -- part -> the SurfaceAppearance we are showing
-local bombSAKey = setmetatable({}, { __mode = "k" }) -- part -> which style that appearance is
-local bombTex = setmetatable({}, { __mode = "k" })   -- part -> its original texture id
-local bombHid = setmetatable({}, { __mode = "k" })   -- part -> the game's own SurfaceAppearance we took off (put back on reset)
-local bombWait = setmetatable({}, { __mode = "k" })  -- part -> waiting for its recoloured texture to finish building
-local paintBombInst
-
-local function ownAppearance(mp)
-	for _, c in ipairs(mp:GetChildren()) do
-		if c:IsA("SurfaceAppearance") and c.Name ~= "VSBombSurface" then return c end
-	end
-	return nil
-end
-
-local function destroyBombSA(mp)
-	local sa = bombSA[mp]
-	if sa then pcall(function() sa:Destroy() end) end
-	bombSA[mp] = nil
-	bombSAKey[mp] = nil
-end
-
--- shows a recoloured image on the mesh. A style is never edited in place: a different style gets a brand new
--- appearance, so there is never a stale / flat texture
-local function showSA(mp, key, image)
-	local sa = bombSA[mp]
-	if sa and sa.Parent == mp and bombSAKey[mp] == key and imgOf[sa] == image then return true end
-	destroyBombSA(mp)
-	sa = Instance.new("SurfaceAppearance")
-	sa.Name = "VSBombSurface"
-	local ok = pcall(function()
-		sa.ColorMapContent = Content.fromObject(image)
-		sa.Color = Color3.new(1, 1, 1) -- white = no tint at all, the recoloured image shows exactly as painted
-	end)
-	if not ok then
-		pcall(function() sa:Destroy() end)
-		return false
-	end
-	sa.Parent = mp
-	imgOf[sa] = image
-	bombSA[mp] = sa
-	bombSAKey[mp] = key
-	return true
-end
-
-local function texOf(mp)
-	local tex = bombTex[mp]
-	if tex then return tex end
-	local own = ownAppearance(mp)
-	if own then pcall(function() tex = own.ColorMap end) end
-	if type(tex) ~= "string" or tex == "" then
-		pcall(function() tex = mp.TextureID end)
-	end
-	if type(tex) ~= "string" or tex == "" then return nil end
-	bombTex[mp] = tex
-	return tex
-end
-
--- returns "done" (recoloured texture showing), "pending" (still building, the bomb keeps its look until it is ready)
--- or "notex" (a plain part with no texture, painted with a flat colour instead)
-local function applyShade(mp, entry, kind)
-	local tex = texOf(mp)
-	if not tex then return "notex" end
-	local style = styleFor(entry)
-	local ent = ensureTexture(style, tex) -- queued first so the colour you picked is built before the rest
-	prebuildBombTex(tex, kind)
-	if ent and ent.state == "done" then
-		local own = ownAppearance(mp)
-		if own then
-			bombHid[mp] = own -- take the game's own appearance off so ours is the only one showing
-			own.Parent = nil
-		end
-		if showSA(mp, style, ent.image) then return "done" end
-		pinkCache[style .. "|" .. tex] = nil -- the image went bad, build it again
-		ent = ensureTexture(style, tex)
-	end
-	if ent and ent.state == "working" then
-		ent.waiters[{}] = true -- gives it most of the frame; a dummy key so nothing else gets repainted
-		setNote("Building the bomb colour...")
-		if not bombWait[mp] then
-			bombWait[mp] = true
-			task.spawn(function()
-				local t0 = os.clock()
-				while ent.state == "working" and os.clock() - t0 < 90 do task.wait(0.05) end
-				bombWait[mp] = nil
-				local e = bombSel[kind]
-				if e and mp.Parent and ent.state == "done" then paintBombInst(mp, e, kind) end
-			end)
-		end
-	end
-	return "pending"
-end
-
-function paintBombInst(inst, entry, kind)
-	local rainbow = isRainbowEntry(entry)
-	local color = entry.color
-	if inst:IsA("BasePart") then
-		bombTouched[kind][inst] = true
-		local state = "notex"
-		if inst:IsA("MeshPart") then state = applyShade(inst, entry, kind) end
-		if state == "done" then
-			bset(inst, "Color", Color3.new(1, 1, 1))
-		elseif state == "notex" then
-			local c = color
-			if rainbow then
-				bombHue[inst] = bombHue[inst] or math.random()
-				c = Color3.fromHSV(bombHue[inst], 0.9, 1) -- fixed colour per part, never changes
-			end
-			bset(inst, "Color", c)
-			guardBombPart(inst, kind)
-		end
-		if entry.reflectance then bset(inst, "Reflectance", entry.reflectance) end
-		return true
-	elseif isEffect(inst) then
-		bombTouched[kind][inst] = true
-		bset(inst, "Color", bombWantSeq(entry))
-		guardBombEffect(inst, kind)
-		return true
-	elseif inst:IsA("SpecialMesh") then
-		bombTouched[kind][inst] = true
-		if rainbow then
-			bset(inst, "VertexColor", Vector3.new(1, 1, 1)) -- the part's fixed colour shows through
-		else
-			bset(inst, "VertexColor", Vector3.new(color.R, color.G, color.B))
-		end
-		return true
-	elseif inst:IsA("SurfaceAppearance") then
-		bombTouched[kind][inst] = true -- its MeshPart recolours it
-		return true
-	elseif inst:IsA("Decal") or inst:IsA("Texture") then
-		bombTouched[kind][inst] = true
-		bset(inst, "Color3", color)
-		return true
-	elseif inst:IsA("Light") then
-		bombTouched[kind][inst] = true
-		bset(inst, "Color", color)
-		return true
-	elseif inst:IsA("Fire") then
-		bombTouched[kind][inst] = true
-		bset(inst, "Color", color)
-		bset(inst, "SecondaryColor", color)
-		return true
-	elseif inst:IsA("Smoke") then
-		bombTouched[kind][inst] = true
-		bset(inst, "Color", color)
-		return true
-	elseif inst:IsA("Sparkles") then
-		bombTouched[kind][inst] = true
-		bset(inst, "SparkleColor", color)
-		return true
-	elseif inst:IsA("Highlight") then
-		bombTouched[kind][inst] = true
-		bset(inst, "FillColor", color)
-		bset(inst, "OutlineColor", color)
-		return true
-	end
-	return false
-end
-
-local function restoreBombInst(inst)
-	bombHue[inst] = nil
-	destroyBombSA(inst)
-	bombTex[inst] = nil
-	local hid = bombHid[inst]
-	if hid then
-		pcall(function() hid.Parent = inst end)
-		bombHid[inst] = nil
-	end
-	local saved = bombOrig[inst]
-	if saved then
-		for prop, v in pairs(saved) do
-			pcall(function() inst[prop] = v end)
-		end
-		bombOrig[inst] = nil
-	end
-	for _, c in ipairs(inst:GetChildren()) do
-		if c.Name == "VSBombSurface" then pcall(function() c:Destroy() end) end
-	end
-end
-
-function resetBomb(kind)
-	bombSel[kind] = nil
-	bombScan[kind] += 1 -- cancels any scan still running
-	local n = 0
-	for inst in pairs(bombTouched[kind]) do
-		pcall(restoreBombInst, inst)
-		n += 1
-	end
-	bombTouched[kind] = setmetatable({}, { __mode = "k" })
-	-- safety net: anything we saved an original for that still belongs to this bomb gets restored too
-	local extra = {}
-	for inst in pairs(bombOrig) do
-		if bombKindOf(inst) == kind then table.insert(extra, inst) end
-	end
-	for _, inst in ipairs(extra) do
-		pcall(restoreBombInst, inst)
-		n += 1
-	end
-	setNote("Reset " .. kind .. " bomb (" .. n .. " parts restored)")
-end
-
-local function isBombRoot(d, kind)
-	return nameKind(d.Name) == kind and not isHumanoidModel(d)
-end
-
-local function scanBomb(kind, entry)
-	bombScan[kind] += 1
-	local token = bombScan[kind]
-	task.spawn(function()
-		local done, found, n = {}, 0, 0
-		local function handle(root)
-			if done[root] then return end
-			done[root] = true
-			if not bombIsYours(root) then return end
-			found += 1
-			paintBombInst(root, entry, kind)
-			for _, d in ipairs(root:GetDescendants()) do
-				paintBombInst(d, entry, kind)
-			end
-		end
-		local containers = { Workspace }
-		local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
-		if bp then table.insert(containers, bp) end
-		for _, container in ipairs(containers) do
-			for _, d in ipairs(container:GetDescendants()) do
-				if bombScan[kind] ~= token then return end
-				n += 1
-				if n % 2500 == 0 then task.wait() end
-				if isBombRoot(d, kind) then handle(d) end
-			end
-		end
-		if bombScan[kind] ~= token then return end
-		if found == 0 then
-			local nice = (kind == "prank") and "prank bomb (FakeBomb)" or "gold bomb"
-			setNote("No " .. nice .. " seen yet. It recolours when you use the emote.")
-		end
-	end)
-end
-
-function applyBomb(kind, entry)
-	bombSel[kind] = entry
-	scanBomb(kind, entry)
-end
-
-local function onBombAdded(d)
-	if BOMB_DEBUG then
-		task.defer(function()
-			local p = d.Parent
-			if not p then return end
-			local char = LocalPlayer.Character
-			if not (p == Workspace or p == char or p:IsA("Backpack")) then return end
-			local root = char and char:FindFirstChild("HumanoidRootPart")
-			local pos = anchorPos(d)
-			if p == Workspace and root and pos and (pos - root.Position).Magnitude > BOMB_RADIUS then return end
-			print("[Voidscope Recolor] new object: " .. d.ClassName .. "  " .. d:GetFullName())
-		end)
-	end
-	-- a bomb mesh just appeared: build every colour for it in the background so picking one is instant
-	if d:IsA("MeshPart") then
-		task.defer(function()
-			if not d.Parent then return end
-			local kind = bombKindOf(d)
-			if not kind then return end
-			local tex = texOf(d)
-			if tex then prebuildBombTex(tex, kind) end
-		end)
-	end
-	if not (bombSel.gold or bombSel.prank) then return end
+connect(Workspace.DescendantAdded, function(d)
+	if not ctxs.knife.sel then return end
 	task.defer(function()
-		if not d.Parent then return end
-		local kind, root = bombKindOf(d)
-		local e = kind and bombSel[kind]
-		if not e then return end
-		if not bombIsYours(root) then return end
-		paintBombInst(d, e, kind)
+		if not d.Parent or not ctxs.knife.sel then return end
+		local tool = d:FindFirstAncestorWhichIsA("Tool")
+		if tool and knifeHooked[tool] then return end -- the equipped knife is handled by its own hook
+		local root = knifeRootOf(d)
+		if not root or not knifeIsYours(root) then return end
+		withCtx("knife", function()
+			partCtx[d] = "knife"
+			paint(d, colorFor(d), false)
+			guardEffect(d)
+		end)
 	end)
-end
-
-connect(Workspace.DescendantAdded, onBombAdded)
-do
-	local function hookBackpack(bp)
-		if bp and bp:IsA("Backpack") then connect(bp.DescendantAdded, onBombAdded) end
-	end
-	hookBackpack(LocalPlayer:FindFirstChildOfClass("Backpack"))
-	connect(LocalPlayer.ChildAdded, hookBackpack)
-end
-
--- a few seconds after loading, quietly search the whole game (emote folders in ReplicatedStorage etc.) for bombs
--- and start building their recoloured textures, so even the first time you use the emote it is ready
-task.delay(BOMB_SCAN_DELAY, function()
-	local n = 0
-	for _, d in ipairs(game:GetDescendants()) do
-		n += 1
-		if n % 3000 == 0 then task.wait() end
-		if string.find(string.lower(d.Name), "bomb", 1, true) and not isHumanoidModel(d) then
-			local kind = nameKind(d.Name)
-			if kind then
-				for _, m in ipairs(d:GetDescendants()) do
-					if m:IsA("MeshPart") then
-						local tex = texOf(m)
-						if tex then prebuildBombTex(tex, kind) end
-					end
-				end
-				if d:IsA("MeshPart") then
-					local tex = texOf(d)
-					if tex then prebuildBombTex(tex, kind) end
-				end
-			end
-		end
-	end
 end)
-end -- end of bomb block
 
 ---------------------------------------------------------------------
 -- HEX PARSER (used by the colour picker)
@@ -2344,6 +2094,15 @@ local function parseHex(s)
 	return Color3.fromRGB(math.floor(n / 65536) % 256, math.floor(n / 256) % 256, n % 256)
 end
 
+local function setOutline(bg, on)
+	local stroke = bg:FindFirstChildOfClass("UIStroke")
+	if stroke then
+		stroke.Color = on and BUTTON_SELECTED or BUTTON_OUTLINE
+		stroke.Thickness = on and 2.5 or 1
+		stroke.Transparency = on and 0 or 0.45
+	end
+end
+
 local function updateStatus()
 	if glassToggleBtn then
 		glassToggleBtn.Text = glassOverlay and "SEE-THROUGH: ON" or "SEE-THROUGH: OFF"
@@ -2357,35 +2116,29 @@ local function updateStatus()
 	if trailToggleBg then
 		trailToggleBg.BackgroundColor3 = trailOn and Color3.fromRGB(0, 105, 190) or Color3.fromRGB(78, 80, 92)
 	end
+	if knifeGlassBtn then
+		knifeGlassBtn.Text = ctxs.knife.glass and "SEE-THROUGH: ON" or "SEE-THROUGH: OFF"
+	end
+	if knifeGlassBg then
+		knifeGlassBg.BackgroundColor3 = ctxs.knife.glass and Color3.fromRGB(0, 105, 190) or Color3.fromRGB(78, 80, 92)
+	end
 	if statusLabel then
 		statusLabel.Text = selected and ("Selected: " .. selected.name) or "Selected: Default"
 	end
 	for name, bg in pairs(buttons) do
-		local stroke = bg:FindFirstChildOfClass("UIStroke")
-		if stroke then
-			local on = (selected ~= nil and selected.name == name)
-			stroke.Color = on and BUTTON_SELECTED or BUTTON_OUTLINE
-			stroke.Thickness = on and 2.5 or 1
-			stroke.Transparency = on and 0 or 0.45
-		end
+		setOutline(bg, selected ~= nil and selected.name == name)
 	end
-	for _, kind in ipairs(BOMB_KINDS) do
-		for name, bg in pairs(bombButtons[kind]) do
-			local stroke = bg:FindFirstChildOfClass("UIStroke")
-			if stroke then
-				local on = (bombSel[kind] ~= nil and bombSel[kind].name == name)
-				stroke.Color = on and BUTTON_SELECTED or BUTTON_OUTLINE
-				stroke.Thickness = on and 2.5 or 1
-				stroke.Transparency = on and 0 or 0.45
-			end
-		end
+	for name, bg in pairs(knifeButtons) do
+		setOutline(bg, ctxs.knife.sel ~= nil and ctxs.knife.sel.name == name)
 	end
 end
 
 local function applyColor(entry)
 	selected = entry
-	if not glassWanted() then unglassAll() end
-	for part in pairs(sheens) do removeSheen(part) end
+	if not glassWanted() then unglassAll("gun") end
+	for part in pairs(sheens) do
+		if ownedBy(part, "gun") then removeSheen(part) end
+	end
 	local found, effects = 0, 0
 	for tool in pairs(hooked) do
 		if tool.Parent then
@@ -2408,9 +2161,43 @@ local function resetColor()
 	selected = nil
 	glassOverlay = false
 	trailOn = false
-	restoreAll()
+	restoreAll("gun")
 	setNote("")
 	setHipStatus("Hip gun: pick a colour first")
+	updateStatus()
+end
+
+local function applyKnife(entry)
+	local found = 0
+	withCtx("knife", function()
+		selected = entry
+		if not glassWanted() then unglassAll("knife") end
+		for part in pairs(sheens) do
+			if ownedBy(part, "knife") then removeSheen(part) end
+		end
+		for tool in pairs(knifeHooked) do
+			if tool.Parent then
+				found += 1
+				paintKnifeTool(tool)
+			end
+		end
+		paintKnifeHip()
+	end)
+	if found == 0 then
+		setNote("Knife not found yet (pick it up / equip it).")
+	elseif not (entry and entry.mode == "texture") then
+		setNote("")
+	end
+	updateStatus()
+end
+
+local function resetKnife()
+	withCtx("knife", function()
+		selected = nil
+		glassOverlay = false
+	end)
+	restoreAll("knife")
+	setNote("")
 	updateStatus()
 end
 
@@ -2777,9 +2564,8 @@ local function buildGui()
 		return l
 	end
 
-	-- scrolling list of colours; suffix = " SCOPE" or " BOMB", store = table that remembers each button,
-	-- list = which colour table to show
-	local function colorScroll(page, nextFn, suffix, onPick, store, list)
+	-- scrolling list of colours; suffix = " SCOPE" or " KNIFE", store = table that remembers each button
+	local function colorScroll(page, nextFn, suffix, onPick, store, list_)
 		local scroll = Instance.new("ScrollingFrame")
 		scroll.Name = "Colours"
 		scroll.LayoutOrder = nextFn()
@@ -2809,7 +2595,7 @@ local function buildGui()
 		scrollList.Padding = UDim.new(0, 6)
 		scrollList.SortOrder = Enum.SortOrder.LayoutOrder
 
-		for i, entry in ipairs(list) do
+		for i, entry in ipairs(list_) do
 			local shown = colorsClose(entry.color, Color3.new(0, 0, 0)) and Color3.fromRGB(40, 40, 46) or entry.color
 			local grad = entry.btnGradient or (entry.gradient and RAINBOW_SEQUENCE) or nil
 			local bg, _, holder = makeGlassButton(scroll, i, string.upper(entry.name) .. suffix, shown, grad,
@@ -2821,7 +2607,7 @@ local function buildGui()
 	end
 
 	-- COLOUR PICKER: a colour box with a dot you drag around (saturation / brightness), a hue slider,
-	-- and a hex box. onApply(color, final) is called while dragging (final = false) and when you let go (final = true).
+	-- and a hex box. onApply(color) is called while dragging and when you let go / press Apply.
 	local function buildPicker(page, nextFn, onApply)
 		sectionLabel(page, nextFn, "COLOUR PICKER")
 		local h, s, v = 0, 1, 1
@@ -2990,7 +2776,7 @@ local function buildGui()
 			local now = os.clock()
 			if final or now - lastApply > 0.15 then
 				lastApply = now
-				onApply(current(), final)
+				onApply(current())
 			end
 		end
 
@@ -3068,7 +2854,7 @@ local function buildGui()
 		refresh(false)
 	end
 
-	-- PAGE 1: SCOPES (the original menu)
+	-- PAGE 1: SCOPES
 	local scopesPage, scopesNext = newPage("scopes")
 
 	local row1 = featureRow(scopesPage, scopesNext)
@@ -3120,37 +2906,51 @@ local function buildGui()
 	sectionLabel(scopesPage, scopesNext, "SCOPES")
 	colorScroll(scopesPage, scopesNext, " SCOPE", applyColor, buttons, COLORS)
 
-	-- COLOUR PICKER (bottom of the main menu): drag the dot around the box, slide the hue, or type a hex
 	buildPicker(scopesPage, scopesNext, function(c)
 		applyColor({ name = "Custom", color = c })
 	end)
 
-	-- PAGES 2 + 3: GOLD BOMB / PRANK BOMB (prank bomb = the "FakeBomb" emote)
-	local function buildBombPage(kind, pageName, niceName)
-		local page, nextFn = newPage(pageName)
-		local row = featureRow(page, nextFn)
-		do
-			local _, _, holder = makeGlassButton(row, 1, "RESET " .. niceName, Color3.fromRGB(84, 84, 100), nil, function()
-				local okReset, errReset = pcall(resetBomb, kind)
-				if not okReset then setNote("Reset error: " .. tostring(errReset)) end
-				updateStatus()
-			end)
-			holder.Size = UDim2.new(1, 0, 1, 0)
-		end
-		sectionLabel(page, nextFn, niceName .. " EMOTE")
-		colorScroll(page, nextFn, " BOMB", function(entry)
-			applyBomb(kind, entry)
-			updateStatus()
-		end, bombButtons[kind], BOMB_LISTS[kind])
-		buildPicker(page, nextFn, function(c, final)
-			if final then
-				applyBomb(kind, { name = "Custom", color = c })
+	-- PAGE 2: KNIVES (same colours as the scopes, renamed Red Knife, Green Knife, ... ; see-through yes, trail no)
+	local knifePage, knifeNext = newPage("knives")
+
+	local krow1 = featureRow(knifePage, knifeNext)
+	knifeGlassBg, knifeGlassBtn = (function()
+		local bg, tb, holder = makeGlassButton(krow1, 1, "SEE-THROUGH: OFF", Color3.fromRGB(78, 80, 92), nil, function()
+			ctxs.knife.glass = not ctxs.knife.glass
+			if ctxs.knife.sel then
+				applyKnife(ctxs.knife.sel)
+			else
 				updateStatus()
 			end
 		end)
+		holder.Size = UDim2.new(1, 0, 1, 0)
+		return bg, tb
+	end)()
+
+	local krow2 = featureRow(knifePage, knifeNext)
+	do
+		local bg, _, holder = makeGlassButton(krow2, 1, string.upper(GLASS.name) .. " KNIFE", Color3.fromRGB(100, 140, 170), nil,
+			function() applyKnife(GLASS) end, 0.15)
+		holder.Size = UDim2.new(0.5, -3, 1, 0)
+		knifeButtons[GLASS.name] = bg
+		local bg2, _, holder2 = makeGlassButton(krow2, 2, string.upper(RAINBOW.name) .. " KNIFE", Color3.new(1, 1, 1), RAINBOW_SEQUENCE,
+			function() applyKnife(RAINBOW) end)
+		holder2.Size = UDim2.new(0.5, -3, 1, 0)
+		knifeButtons[RAINBOW.name] = bg2
 	end
-	buildBombPage("gold", "gold", "GOLD BOMB")
-	buildBombPage("prank", "prank", "PRANK BOMB")
+
+	local krow3 = featureRow(knifePage, knifeNext)
+	do
+		local _, _, holder = makeGlassButton(krow3, 1, "RESET KNIFE", Color3.fromRGB(84, 84, 100), nil, resetKnife)
+		holder.Size = UDim2.new(1, 0, 1, 0)
+	end
+
+	sectionLabel(knifePage, knifeNext, "KNIVES")
+	colorScroll(knifePage, knifeNext, " KNIFE", applyKnife, knifeButtons, COLORS)
+
+	buildPicker(knifePage, knifeNext, function(c)
+		applyKnife({ name = "Custom", color = c })
+	end)
 
 	-- shared note + footer + credit (below whichever page is showing)
 	noteLabel = label(content, nextOrder(), "", 11, Color3.fromRGB(150, 150, 170), 14)
@@ -3206,20 +3006,13 @@ local function buildGui()
 			page.Visible = (key == name)
 		end
 		for key, bg in pairs(tabBgs) do
-			local stroke = bg:FindFirstChildOfClass("UIStroke")
-			local on = (key == name)
-			if stroke then
-				stroke.Color = on and BUTTON_SELECTED or BUTTON_OUTLINE
-				stroke.Thickness = on and 2.5 or 1
-				stroke.Transparency = on and 0 or 0.45
-			end
+			setOutline(bg, key == name)
 		end
 		setNote("")
 	end
 	local tabDefs = {
 		{ "scopes", "SCOPES" },
-		{ "gold", "GOLD BOMB" },
-		{ "prank", "PRANK BOMB" },
+		{ "knives", "KNIVES" },
 	}
 	for i, def in ipairs(tabDefs) do
 		local key = def[1]
@@ -3386,14 +3179,12 @@ if type(pre) == "string" then
 	end
 end
 
+-- closing the script ONLY removes the menu and stops the live watching. Nothing is reset, so every colour,
+-- texture, glass and see-through effect you applied stays on the gun / knife.
 env.VoidscopeRecolorCleanup = function()
 	for _, c in ipairs(conns) do
 		pcall(function() c:Disconnect() end)
 	end
-	for _, kind in ipairs(BOMB_KINDS) do
-		pcall(resetBomb, kind)
-	end
-	restoreAll()
 	if gui then gui:Destroy() end
 	env.VoidscopeRecolorCleanup = nil
 end
