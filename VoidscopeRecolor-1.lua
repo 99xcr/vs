@@ -169,6 +169,17 @@ end
 
 -- turns a SKIN_TEXTURES value into something a texture can use (or nil if that skin is empty / unusable)
 local skinCache = {}
+-- SurfaceAppearance needs an IMAGE id. If you gave a DECAL id, this asks the game for the decal and uses the image inside it
+local function decalToImage(id)
+	local ok, tex = pcall(function()
+		local objs = game:GetObjects("rbxassetid://" .. id)
+		local o = objs and objs[1]
+		if o and (o:IsA("Decal") or o:IsA("Texture")) then return o.Texture end
+		return nil
+	end)
+	if ok and type(tex) == "string" and tex ~= "" then return tex end
+	return nil
+end
 local function resolveSkin(key)
 	if not key then return nil end
 	local cached = skinCache[key]
@@ -182,7 +193,7 @@ local function resolveSkin(key)
 		if raw == "" then
 			result = false
 		elseif string.find(raw, "^%d+$") then
-			result = "rbxassetid://" .. raw
+			result = decalToImage(raw) or ("rbxassetid://" .. raw)
 		elseif string.find(raw, "^rbxassetid://") or string.find(raw, "^rbxasset://") then
 			result = raw
 		elseif string.find(raw, "^https?://") then
@@ -3027,13 +3038,35 @@ end
 -- INSTANT SWITCHING: at start, load every skin picture, preload it into the game's texture cache, and get its
 -- appearance ready on every gun part, so clicking a skin later only swaps it in.
 task.spawn(function()
-	local list = {}
+	local list, keyOf = {}, {}
 	for key in pairs(SKIN_TEXTURES) do
 		local content = resolveSkin(key)
-		if content then table.insert(list, content) end
+		if content then
+			table.insert(list, content)
+			keyOf[content] = key
+		end
 	end
 	if #list > 0 then
-		pcall(function() ContentProvider:PreloadAsync(list) end)
+		local bad = {}
+		pcall(function()
+			ContentProvider:PreloadAsync(list, function(id, status)
+				if status == Enum.AssetFetchStatus.Failure or status == Enum.AssetFetchStatus.TimedOut then
+					table.insert(bad, id)
+				end
+			end)
+		end)
+		local names = {}
+		for _, id in ipairs(bad) do
+			local key = keyOf[id]
+			if key then
+				skinCache[key] = false -- this picture won't load, so use the built-in look for that skin
+				table.insert(names, key)
+				warn("[Voidscope Recolor] the '" .. key .. "' picture (" .. tostring(id) .. ") failed to load - is it an Image id (not a Decal id) and approved/public?")
+			end
+		end
+		if #names > 0 then
+			setNote("These skin pictures failed to load: " .. table.concat(names, ", ") .. " (need Image ids)")
+		end
 	end
 	for tool in pairs(hooked) do
 		if tool.Parent then prebuildSkins(tool) end
