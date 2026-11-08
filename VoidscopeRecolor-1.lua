@@ -20,6 +20,7 @@ local TRAIL_LIFETIME = 0.6   -- how long the trail lingers (seconds)
 local TRAIL_WIDTH = 0.22     -- how thick the trail is (studs), smaller = thinner
 local TRAIL_END = "back"     -- "back" = comes off the very back of the gun, "front" = off the tip
 local TRAIL_FLIP = false     -- if the trail comes off the wrong end of the gun, set this to true
+local TRAIL_DROP = 0.25      -- how far to move the trail DOWN from where it is now (studs). Bigger = lower, 0 = old position
 
 -- EDITABLE IMAGE SPEED SETTINGS (only used by the built-in backup textures, see SKIN_TEXTURES below)
 local MAX_TEX = 512              -- sharper; built once in the background so it doesn't hurt switching (384 = lighter)
@@ -42,7 +43,7 @@ local WHITE_INVERT = false
 -- A skin you leave empty ("") uses the older built-in look for that colour instead, so nothing breaks.
 -- (If the game blocks the built-in texture editing, the skin falls back to a plain colour tint.)
 --
--- INSTANT SWITCHING: every picture is preloaded when the script starts, and its gun appearance is made in advance
+-- INSTANT SWITCHING: every picture is downloaded into memory when the script starts, and its gun appearance is made in advance
 -- for every gun part, so clicking a skin only swaps it in (nothing is loaded or built at click time).
 ---------------------------------------------------------------------
 local SKIN_TEXTURES = {
@@ -50,6 +51,8 @@ local SKIN_TEXTURES = {
 	diamond = "82154314380330",
 	ruby    = "92501356713156",
 	beast   = "78396157128775",
+	kitty   = "125707015473446",
+	galaxy  = "105612826347881",
 }
 
 -- button shine for the special scopes (gold bands / icy diamond facets / ruby / beast)
@@ -81,6 +84,19 @@ local BEAST_SEQ = ColorSequence.new({
 	ColorSequenceKeypoint.new(0.8, Color3.fromRGB(0, 220, 255)),
 	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 90, 220)),
 })
+local KITTY_SEQ = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 200, 225)),
+	ColorSequenceKeypoint.new(0.35, Color3.fromRGB(255, 130, 190)),
+	ColorSequenceKeypoint.new(0.65, Color3.fromRGB(255, 235, 245)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 170, 210)),
+})
+local GALAXY_SEQ = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(30, 10, 80)),
+	ColorSequenceKeypoint.new(0.3, Color3.fromRGB(110, 50, 210)),
+	ColorSequenceKeypoint.new(0.6, Color3.fromRGB(40, 90, 230)),
+	ColorSequenceKeypoint.new(0.85, Color3.fromRGB(220, 90, 220)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 10, 80)),
+})
 
 -- "skin" = which picture from SKIN_TEXTURES the colour uses. mode / texStyle = the older built-in look, used as the
 -- backup when that skin's picture isn't filled in above.
@@ -104,6 +120,10 @@ local COLORS = {
 		btnGradient = RUBY_SEQ, effectSeq = RUBY_SEQ },
 	{ name = "Beast",      color = Color3.fromRGB(150, 60, 230), mode = "texture", texStyle = "beast", skin = "beast", reflectance = 0.12,
 		btnGradient = BEAST_SEQ, effectSeq = BEAST_SEQ },
+	{ name = "Kitty",      color = Color3.fromRGB(255, 150, 200), mode = "texture", texStyle = "pink", skin = "kitty",
+		btnGradient = KITTY_SEQ, effectSeq = KITTY_SEQ },
+	{ name = "Galaxy",     color = Color3.fromRGB(100, 60, 220), mode = "texture", texStyle = "beast", skin = "galaxy",
+		btnGradient = GALAXY_SEQ, effectSeq = GALAXY_SEQ },
 }
 
 local RAINBOW_SPIN = 0.08
@@ -1021,9 +1041,53 @@ local function applyEdited(mp, image, style)
 	return true
 end
 
--- makes (but does not show) the gun appearance for one skin picture on one mesh part.
--- Doing this ahead of time is what makes clicking a skin instant: the click only has to swap it in.
-local function makeSkinSA(mp, content, key)
+-- SKIN LOADER: every skin picture is downloaded into memory ONCE (at startup), and its gun appearance is made
+-- ahead of time on every gun part. Clicking a skin then only swaps an already-made appearance in, so there is
+-- no loading and no flat colour. If you click before a picture has finished downloading, the gun keeps its
+-- current look and swaps the moment it is ready.
+local SkinKit = { img = {}, loading = {}, waiting = {}, onReady = nil }
+
+-- downloads a skin picture into memory once, so showing it later is instant
+function SkinKit.load(key)
+	if SkinKit.img[key] ~= nil or SkinKit.loading[key] then return end
+	SkinKit.loading[key] = true
+	task.spawn(function()
+		local content = resolveSkin(key)
+		local ei = false
+		if content then
+			local ok, res = pcall(function()
+				return AssetService:CreateEditableImageAsync(Content.fromUri(content))
+			end)
+			if ok and res then
+				ei = res
+				table.insert(KEEP, res)
+			end
+		end
+		SkinKit.img[key] = ei -- false = couldn't be held in memory, falls back to the normal picture link
+		SkinKit.loading[key] = nil
+		if SkinKit.onReady then pcall(SkinKit.onReady, key) end
+	end)
+end
+
+-- puts the picture into a SurfaceAppearance, returns what it used (or nil)
+function SkinKit.fill(sa, key)
+	local src = SkinKit.img[key]
+	local content = resolveSkin(key)
+	if src then
+		if not pcall(function() sa.ColorMapContent = Content.fromObject(src) end) then return nil end
+		pcall(function() sa.Color = Color3.new(1, 1, 1) end)
+		return src
+	elseif content then
+		if not pcall(function() sa.ColorMap = content end) then return nil end
+		pcall(function() sa.Color = Color3.new(1, 1, 1) end)
+		return content
+	end
+	return nil
+end
+
+-- makes (but does not show) the skin's appearance for one gun part
+function SkinKit.make(mp, key)
+	if SkinKit.img[key] == nil then return nil end -- still downloading
 	local cache = saCache[mp]
 	if not cache then
 		cache = {}
@@ -1031,7 +1095,7 @@ local function makeSkinSA(mp, content, key)
 	end
 	local name = "skin_" .. key
 	local sa = cache[name]
-	if sa and imgOf[sa] ~= content then -- the picture setting changed
+	if sa and imgOf[sa] ~= (SkinKit.img[key] or resolveSkin(key)) then
 		pcall(function() sa:Destroy() end)
 		cache[name] = nil
 		sa = nil
@@ -1039,44 +1103,39 @@ local function makeSkinSA(mp, content, key)
 	if not sa then
 		sa = Instance.new("SurfaceAppearance")
 		sa.Name = "VSSurface"
-		local ok = pcall(function()
-			sa.ColorMap = content
-			sa.Color = Color3.new(1, 1, 1)
-		end)
-		if not ok then
+		local token = SkinKit.fill(sa, key)
+		if not token then
 			pcall(function() sa:Destroy() end)
 			return nil
 		end
 		ours[sa] = true
 		cache[name] = sa
-		imgOf[sa] = content
+		imgOf[sa] = token
 	end
 	return sa, cache
 end
 
--- shows one of the SKIN_TEXTURES pictures on the mesh (no tint, the picture shows as it is).
--- Each skin has its own SurfaceAppearance that is swapped in by re-parenting.
-local function applySkin(mp, content, key)
-	local sa, cache = makeSkinSA(mp, content, key)
+-- shows the skin (swap only, nothing loads here)
+function SkinKit.apply(mp, key)
+	local sa, cache = SkinKit.make(mp, key)
 	if not sa then return false end
 	sa.Parent = mp -- show the new one first, then hide the others, so there is never a gap
 	for _, o in pairs(cache) do
 		if o ~= sa and o.Parent then o.Parent = nil end
 	end
 	surfaces[mp] = sa
-	applied[mp] = content
+	applied[mp] = imgOf[sa]
 	return true
 end
 
--- gets every skin ready for every part of a gun (unparented, so nothing changes on screen yet)
-local function prebuildSkins(tool)
+-- gets every downloaded skin ready on every part of a gun (unparented, so nothing changes on screen yet)
+function SkinKit.prebuild(tool)
 	for _, d in ipairs(tool:GetDescendants()) do
 		if d:IsA("MeshPart") then
 			local ok, tex = pcall(function() return d.TextureID end)
 			if ok and type(tex) == "string" and tex ~= "" then
 				for key in pairs(SKIN_TEXTURES) do
-					local content = resolveSkin(key)
-					if content then pcall(makeSkinSA, d, content, key) end
+					if SkinKit.img[key] ~= nil then pcall(SkinKit.make, d, key) end
 				end
 			end
 		end
@@ -1172,8 +1231,18 @@ function tintMesh(mp, color)
 	if skin then
 		local okTex, tex = pcall(function() return mp.TextureID end)
 		if not okTex or type(tex) ~= "string" or tex == "" then return end
-		if applySkin(mp, skin, selected.skin) then
+		local key = selected.skin
+		if SkinKit.img[key] == nil then
+			-- still downloading: keep what is showing (never a flat colour) and swap the moment it's ready
+			SkinKit.load(key)
+			SkinKit.waiting[key] = SkinKit.waiting[key] or {}
+			SkinKit.waiting[key][mp] = true
+			setNote("Loading the " .. selected.name .. " picture...")
+			return
+		end
+		if SkinKit.apply(mp, key) then
 			removeOverlay(mp)
+			setNote("")
 		else
 			setNote("Couldn't load the " .. selected.name .. " picture, check SKIN_TEXTURES.")
 		end
@@ -1528,13 +1597,16 @@ local function buildTrail(tool, allParts, gripPos)
 	end
 	if not ref then return end
 	print("[Voidscope Recolor] trail tip = " .. how .. " (on part '" .. ref.Name .. "')")
+	-- moves the whole trail DOWN (same spot along the gun, just lower)
+	local upLocal = ref.CFrame:VectorToObjectSpace(Vector3.new(0, 1, 0))
+	local drop = upLocal.Magnitude > 0.01 and (upLocal.Unit * -TRAIL_DROP) or Vector3.zero
 	local a0 = Instance.new("Attachment")
 	a0.Name = "VSTrail"
-	a0.Position = tip + side
+	a0.Position = tip + side + drop
 	a0.Parent = ref
 	local a1 = Instance.new("Attachment")
 	a1.Name = "VSTrail"
-	a1.Position = tip - side
+	a1.Position = tip - side + drop
 	a1.Parent = ref
 	local trail = Instance.new("Trail")
 	trail.Name = "VSTrail"
@@ -1958,7 +2030,7 @@ local function hookGun(tool)
 	hooked[tool] = true
 	print("[Voidscope Recolor] found gun: " .. tool:GetFullName())
 	task.delay(PREBUILD_DELAY, prebuildTextures, tool) -- builds the backup looks quietly in the background
-	task.spawn(prebuildSkins, tool)                    -- makes every skin ready on every gun part right now (instant switching)
+	task.spawn(SkinKit.prebuild, tool)                 -- makes every downloaded skin ready on every gun part right now (instant switching)
 	local effects = paintGun(tool)
 	if selected then
 		setGunStatus("Gun: found, " .. effects .. " beam part(s)")
@@ -3127,48 +3199,47 @@ else
 	end)
 end
 
--- INSTANT SWITCHING: at start, every skin is made ready on every gun part straight away, and every picture is
--- warmed up in parallel (not one after another), so clicking a skin only swaps it in.
+-- INSTANT SWITCHING: at start, every skin picture is downloaded into memory at the same time and made ready on
+-- every gun part, so clicking a skin only swaps it in. A click made before a download finishes keeps the current
+-- look (no flat colour) and swaps the moment that picture is ready.
 task.spawn(function()
-	local list, keyOf = {}, {}
-	for key in pairs(SKIN_TEXTURES) do
-		local content = resolveSkin(key)
-		if content then
-			table.insert(list, content)
-			keyOf[content] = key
+	SkinKit.onReady = function(key)
+		for tool in pairs(hooked) do
+			if tool.Parent then SkinKit.prebuild(tool) end
+		end
+		local w = SkinKit.waiting[key]
+		SkinKit.waiting[key] = nil
+		if w and selected and selected.skin == key then
+			for mp in pairs(w) do
+				if typeof(mp) == "Instance" and mp.Parent then pcall(tintMesh, mp, colorFor(mp)) end
+			end
+			setNote("")
 		end
 	end
-	for tool in pairs(hooked) do
-		if tool.Parent then prebuildSkins(tool) end
-	end
-	local pending = #list
-	for _, content in ipairs(list) do
-		task.spawn(function()
-			local status
-			pcall(function()
-				ContentProvider:PreloadAsync({ content }, function(_, st) status = st end)
-			end)
-			if status == Enum.AssetFetchStatus.Failure or status == Enum.AssetFetchStatus.TimedOut then
-				local key = keyOf[content]
-				warn("[Voidscope Recolor] the '" .. tostring(key) .. "' picture failed to load. Save it as '" .. tostring(key) .. ".png' in your executor's workspace folder.")
-				setNote("The " .. tostring(key) .. " skin picture was blocked by the game, use " .. tostring(key) .. ".png in your workspace folder.")
-			end
-			pending -= 1
-		end)
-	end
-	-- once everything is downloaded, show each skin for a moment on a tiny hidden copy of a gun part, so the
-	-- graphics card has already decoded them and the first click on a skin has nothing left to load
+	-- every skin downloads at the same time
+	for key in pairs(SKIN_TEXTURES) do SkinKit.load(key) end
 	local waited = 0
-	while pending > 0 and waited < 20 do
+	while waited < 30 do
+		local pending = false
+		for key in pairs(SKIN_TEXTURES) do
+			if SkinKit.img[key] == nil then pending = true end
+		end
+		if not pending then break end
 		task.wait(0.1)
 		waited += 0.1
 	end
-	local src, srcTool
+	for key in pairs(SKIN_TEXTURES) do
+		if SkinKit.img[key] == false then
+			warn("[Voidscope Recolor] the '" .. key .. "' picture couldn't be loaded. Save it as '" .. key .. ".png' in your executor's workspace folder.")
+		end
+	end
+	-- show each skin for a moment on a tiny hidden copy of a gun part so the graphics card has them ready
+	local src
 	for tool in pairs(hooked) do
 		if tool.Parent then
 			for _, d in ipairs(tool:GetDescendants()) do
 				local okt, tex = pcall(function() return d:IsA("MeshPart") and d.TextureID or "" end)
-				if okt and tex ~= "" and (not src or d.Size.Magnitude > src.Size.Magnitude) then src, srcTool = d, tool end
+				if okt and tex ~= "" and (not src or d.Size.Magnitude > src.Size.Magnitude) then src = d end
 			end
 		end
 	end
@@ -3183,12 +3254,13 @@ task.spawn(function()
 		dummy.CanTouch = false
 		dummy.Size = src.Size * 0.15
 		dummy.Parent = cam
-		for _, content in ipairs(list) do
+		for key in pairs(SKIN_TEXTURES) do
 			if cam then dummy.CFrame = cam.CFrame * CFrame.new(0, 0, -3) end
 			local sa = Instance.new("SurfaceAppearance")
-			sa.ColorMap = content
-			sa.Parent = dummy
-			task.wait(0.07)
+			if SkinKit.fill(sa, key) then
+				sa.Parent = dummy
+				task.wait(0.1)
+			end
 			sa:Destroy()
 		end
 		dummy:Destroy()
