@@ -186,6 +186,21 @@ local function resolveSkin(key)
 	if cached ~= nil then return cached or nil end
 	local result = false
 	local raw = SKIN_TEXTURES[key]
+	do -- a file called gold.png / pink.png / ... in the executor's workspace folder always wins (works in any game)
+		local toAssetLocal = getcustomasset or getsynasset
+		if toAssetLocal and isfile then
+			for _, fname in ipairs({ key .. ".png", "VSSkin_" .. key .. ".png" }) do
+				local okf, exists = pcall(isfile, fname)
+				if okf and exists then
+					local oka, asset = pcall(function() return toAssetLocal(fname) end)
+					if oka and type(asset) == "string" and asset ~= "" then
+						skinCache[key] = asset
+						return asset
+					end
+				end
+			end
+		end
+	end
 	if type(raw) == "string" then
 		raw = (string.gsub(raw, "^%s+", ""))
 		raw = (string.gsub(raw, "%s+$", ""))
@@ -3059,13 +3074,12 @@ task.spawn(function()
 		for _, id in ipairs(bad) do
 			local key = keyOf[id]
 			if key then
-				skinCache[key] = false -- this picture won't load, so use the built-in look for that skin
 				table.insert(names, key)
-				warn("[Voidscope Recolor] the '" .. key .. "' picture (" .. tostring(id) .. ") failed to load - is it an Image id (not a Decal id) and approved/public?")
+				warn("[Voidscope Recolor] the '" .. key .. "' picture (" .. tostring(id) .. ") failed to load. Roblox only lets a game use your uploaded images if you own that game, so use a local file instead: save it as '" .. key .. ".png' in your executor's workspace folder.")
 			end
 		end
 		if #names > 0 then
-			setNote("These skin pictures failed to load: " .. table.concat(names, ", ") .. " (need Image ids)")
+			setNote("Skin pictures blocked by the game: " .. table.concat(names, ", ") .. ". Put <name>.png files in your executor's workspace folder instead.")
 		end
 	end
 	for tool in pairs(hooked) do
