@@ -1,3 +1,184 @@
+-- VESTA LOADING SCREEN
+local VestaLoader = (function()
+	local Players = game:GetService("Players")
+	local RunService = game:GetService("RunService")
+	local TweenService = game:GetService("TweenService")
+	local genv = (getgenv and getgenv()) or _G
+	genv.VestaLoadDone = nil
+
+	local FONT = Enum.Font.FredokaOne -- bubbly font
+	local TITLE = "VESTA RECOLOR"
+	local MIN_TIME = 3     -- shortest time the screen shows (seconds)
+	local MAX_TIME = 12    -- gives up waiting after this long and fades anyway
+
+	local old = genv.VestaLoaderGui
+	if old then pcall(function() old:Destroy() end) end
+
+	local sg = Instance.new("ScreenGui")
+	sg.Name = "VestaLoader"
+	sg.IgnoreGuiInset = true
+	sg.ResetOnSpawn = false
+	sg.DisplayOrder = 999999
+	pcall(function() sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling end)
+	local ok = pcall(function()
+		sg.Parent = (gethui and gethui()) or game:GetService("CoreGui")
+	end)
+	if not ok or not sg.Parent then
+		sg.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+	end
+	genv.VestaLoaderGui = sg
+
+	-- CanvasGroup so the whole screen can fade out in one go
+	local root = Instance.new("CanvasGroup")
+	root.Size = UDim2.new(1, 0, 1, 0)
+	root.BackgroundColor3 = Color3.new(0, 0, 0)
+	root.BorderSizePixel = 0
+	root.Active = true -- blocks clicks going through to the game
+	root.Parent = sg
+
+	-- floating bubbles
+	local bubbles = {}
+	for i = 1, 22 do
+		local size = math.random(14, 46)
+		local b = Instance.new("Frame")
+		b.Size = UDim2.new(0, size, 0, size)
+		b.AnchorPoint = Vector2.new(0.5, 0.5)
+		b.BackgroundColor3 = Color3.fromHSV(math.random(), 0.5, 1)
+		b.BackgroundTransparency = 0.88
+		b.BorderSizePixel = 0
+		b.Parent = root
+		Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
+		local s = Instance.new("UIStroke")
+		s.Color = Color3.fromHSV(math.random(), 0.4, 1)
+		s.Thickness = 1.5
+		s.Transparency = 0.6
+		s.Parent = b
+		bubbles[i] = { f = b, x = math.random(), speed = 0.04 + math.random() * 0.08, phase = math.random(), sway = 0.01 + math.random() * 0.03 }
+	end
+
+	-- title, one label per letter so each can bounce
+	local holder = Instance.new("Frame")
+	holder.AnchorPoint = Vector2.new(0.5, 0.5)
+	holder.Position = UDim2.new(0.5, 0, 0.45, 0)
+	holder.Size = UDim2.new(0.88, 0, 0.14, 0)
+	holder.BackgroundTransparency = 1
+	holder.Parent = root
+	local cap = Instance.new("UISizeConstraint")
+	cap.MaxSize = Vector2.new(720, 90)
+	cap.Parent = holder
+
+	local letters = {}
+	local n = #TITLE
+	for i = 1, n do
+		local ch = string.sub(TITLE, i, i)
+		if ch ~= " " then
+			local l = Instance.new("TextLabel")
+			l.AnchorPoint = Vector2.new(0.5, 0.5)
+			l.Position = UDim2.new((i - 0.5) / n, 0, 0.5, 0)
+			l.Size = UDim2.new(1 / n, 0, 1, 0)
+			l.BackgroundTransparency = 1
+			l.Font = FONT
+			l.Text = ch
+			l.TextScaled = true
+			l.TextColor3 = Color3.new(1, 1, 1)
+			l.TextTransparency = 1
+			l.Parent = holder
+			local lim = Instance.new("UITextSizeConstraint")
+			lim.MaxTextSize = 80
+			lim.Parent = l
+			local glow = Instance.new("UIStroke")
+			glow.Thickness = 3
+			glow.Transparency = 1
+			glow.Parent = l
+			letters[#letters + 1] = { l = l, g = glow, i = i }
+		end
+	end
+
+	-- progress bar (sliding shine) + small "loading" text at the bottom
+	local barBack = Instance.new("Frame")
+	barBack.AnchorPoint = Vector2.new(0.5, 1)
+	barBack.Position = UDim2.new(0.5, 0, 1, -62)
+	barBack.Size = UDim2.new(0.5, 0, 0, 6)
+	barBack.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+	barBack.BorderSizePixel = 0
+	barBack.ClipsDescendants = true
+	barBack.Parent = root
+	local barCap = Instance.new("UISizeConstraint")
+	barCap.MaxSize = Vector2.new(320, 6)
+	barCap.Parent = barBack
+	Instance.new("UICorner", barBack).CornerRadius = UDim.new(1, 0)
+
+	local bar = Instance.new("Frame")
+	bar.Size = UDim2.new(0.35, 0, 1, 0)
+	bar.BackgroundColor3 = Color3.new(1, 1, 1)
+	bar.BorderSizePixel = 0
+	bar.Parent = barBack
+	Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+	local barGrad = Instance.new("UIGradient")
+	barGrad.Parent = bar
+
+	local loadText = Instance.new("TextLabel")
+	loadText.AnchorPoint = Vector2.new(0.5, 1)
+	loadText.Position = UDim2.new(0.5, 0, 1, -30)
+	loadText.Size = UDim2.new(0, 200, 0, 22)
+	loadText.BackgroundTransparency = 1
+	loadText.Font = FONT
+	loadText.TextSize = 14
+	loadText.TextColor3 = Color3.fromRGB(190, 190, 210)
+	loadText.Text = "loading"
+	loadText.Parent = root
+
+	local start = os.clock()
+	local finishing = false
+	local conn
+	conn = RunService.RenderStepped:Connect(function()
+		local t = os.clock() - start
+		for _, d in ipairs(letters) do
+			local p = math.clamp((t - d.i * 0.06) / 0.45, 0, 1)
+			local pop = 1 - (1 - p) ^ 3
+			local bounce = math.sin(t * 4 + d.i * 0.55) * 0.1
+			d.l.Position = UDim2.new((d.i - 0.5) / n, 0, 0.5 + bounce + (1 - pop) * 0.7, 0)
+			d.l.Rotation = math.sin(t * 3 + d.i) * 4
+			d.l.TextTransparency = 1 - pop
+			local c = Color3.fromHSV((t * 0.12 + d.i * 0.05) % 1, 0.55, 1)
+			d.l.TextColor3 = c
+			d.g.Color = c
+			d.g.Transparency = 1 - pop * 0.55
+		end
+		for _, b in ipairs(bubbles) do
+			local y = 1.1 - ((t * b.speed + b.phase) % 1) * 1.25
+			b.f.Position = UDim2.new(b.x + math.sin(t * 1.5 + b.phase * 6) * b.sway, 0, y, 0)
+		end
+		local slide = (t * 0.9) % 1.7 - 0.5
+		bar.Position = UDim2.new(slide, 0, 0, 0)
+		barGrad.Color = ColorSequence.new(Color3.fromHSV((t * 0.2) % 1, 0.5, 1), Color3.fromHSV((t * 0.2 + 0.25) % 1, 0.5, 1))
+		loadText.Text = "loading" .. string.rep(".", math.floor(t * 2.5) % 4)
+	end)
+
+	local function finish()
+		if finishing then return end
+		finishing = true
+		loadText.Text = "ready!"
+		local tw = TweenService:Create(root, TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { GroupTransparency = 1 })
+		tw:Play()
+		tw.Completed:Wait()
+		if conn then conn:Disconnect() end
+		sg:Destroy()
+		genv.VestaLoaderGui = nil
+	end
+
+	-- waits for the script to say it's done (VestaLoadDone), but never longer than MAX_TIME
+	task.spawn(function()
+		while true do
+			local t = os.clock() - start
+			if t >= MAX_TIME or (t >= MIN_TIME and genv.VestaLoadDone) then break end
+			task.wait(0.1)
+		end
+		finish()
+	end)
+
+	return { finish = finish }
+end)()
 print("[Voidscope Recolor] loading...")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
