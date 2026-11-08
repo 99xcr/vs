@@ -39,18 +39,19 @@ local WHITE_INVERT = false
 --   2) a link to the PNG:     "https://.../gold.png"     (executors with writefile + getcustomasset only)
 --   3) a file name in your executor's workspace folder: "gold.png"   (same executor requirement)
 -- A skin you leave empty ("") uses the older built-in look for that colour instead, so nothing breaks.
+-- (If the game blocks the built-in texture editing, the skin falls back to a plain colour tint.)
 --
 -- INSTANT SWITCHING: every picture is preloaded when the script starts, and its gun appearance is made in advance
 -- for every gun part, so clicking a skin only swaps it in (nothing is loaded or built at click time).
 ---------------------------------------------------------------------
 local SKIN_TEXTURES = {
-	gold    = "",
-	pink    = "",
-	diamond = "",
-	black   = "",
-	ruby    = "",
-	beast   = "",
-	white   = "",
+	gold    = "91851946033992",
+	pink    = "136181484569381",
+	diamond = "82154314380330",
+	black   = "132102202059454",
+	ruby    = "92501356713156",
+	beast   = "78396157128775",
+	white   = "99398506651641",
 }
 
 -- button shine for the special scopes (gold bands / icy diamond facets / ruby / beast)
@@ -1057,6 +1058,7 @@ end
 
 local tintMesh
 local jobs = {}
+local sourceFailed = {} -- texture id -> { at, why }: textures the game wouldn't let us read (don't retry every click)
 local working = false
 
 local function runJobs()
@@ -1076,8 +1078,20 @@ local function runJobs()
 			end
 			local src, why = sources[job.tex], nil
 			if not src then
-				src, why = loadSource(job.tex, budget)
-				if src then sources[job.tex] = src end
+				local f = sourceFailed[job.tex]
+				if f and os.clock() - f.at < 30 then
+					why = f.why
+				else
+					src, why = loadSource(job.tex, budget)
+					if src then
+						sources[job.tex] = src
+					else
+						if not f then
+							warn("[Voidscope Recolor] " .. tostring(why))
+						end
+						sourceFailed[job.tex] = { at = os.clock(), why = why }
+					end
+				end
 			end
 			local image
 			if src then image, why = paintSource(src, TEX_STYLES[job.style], budget) end
@@ -1088,13 +1102,9 @@ local function runJobs()
 				entry.state = "failed"
 				entry.at = os.clock()
 				entry.why = tostring(why)
-				warn("[Voidscope Recolor] " .. job.style .. " texture edit failed: " .. tostring(why))
 			end
 			local waiting = entry.waiters
 			entry.waiters = {}
-			if next(waiting) then
-				setNote(image and "" or ("Texture edit failed: " .. tostring(why)))
-			end
 			for w in pairs(waiting) do
 				if selected and selected.mode == "texture" and typeof(w) == "Instance" and w.Parent then
 					pcall(tintMesh, w, colorFor(w))
@@ -1109,7 +1119,7 @@ local function ensureTexture(style, tex)
 	if not TEX_STYLES[style] then return nil end
 	local key = style .. "|" .. tex
 	local entry = pinkCache[key]
-	if entry and entry.state == "failed" and os.clock() - (entry.at or 0) > 2 then
+	if entry and entry.state == "failed" and os.clock() - (entry.at or 0) > 30 then
 		entry = nil
 	end
 	if entry then return entry end
@@ -1156,6 +1166,7 @@ function tintMesh(mp, color)
 		if entry and entry.state == "done" then
 			if applyEdited(mp, entry.image, style) then
 				removeOverlay(mp)
+				setNote("")
 				return
 			end
 			-- the image went bad (destroyed?): throw it away and build it again
@@ -1169,8 +1180,12 @@ function tintMesh(mp, color)
 			if not applied[mp] then hideSurfaces(mp) end
 			setNote("Building the " .. style .. " texture...")
 		elseif entry and entry.state == "failed" then
-			removeSurface(mp)
-			setNote("Texture edit failed: " .. tostring(entry.why))
+			-- the game won't let us edit its texture: tint with the skin's colour instead, so something always shows
+			applied[mp] = nil
+			local c = colorFor(mp)
+			local result = setSurfaceTint(mp, c)
+			if result == "fail" then setOverlay(mp, c, OVERLAY_TRANSPARENCY) end
+			setNote(selected.name .. ": texture edit blocked, using a colour tint. Fill in SKIN_TEXTURES for the full look.")
 		end
 		return
 	end
@@ -1529,8 +1544,11 @@ end
 
 local function paint(inst, color, isShot)
 	if inst:IsA("MeshPart") and not isShot then
-		-- texture styles / skins paint the whole look themselves, so the part itself must not add a colour tint on top
-		local c = ((selected and selected.mode == "texture") or skinOf(selected)) and Color3.new(1, 1, 1) or color
+		-- texture styles / skins paint the whole look themselves, so a textured part must not add a colour tint on top.
+		-- Parts with no texture have nothing to paint them, so they get the plain colour.
+		local hasTex = false
+		pcall(function() hasTex = inst.TextureID ~= "" end)
+		local c = (hasTex and ((selected and selected.mode == "texture") or skinOf(selected))) and Color3.new(1, 1, 1) or color
 		set(inst, "Color", c)
 		watchTexture(inst)
 		tintMesh(inst, color)
@@ -1801,10 +1819,30 @@ local function watchCharacter(char)
 	if ref and ref:IsA("ObjectValue") then hookRef(ref) end
 end
 
+-- GUN DETECTION: a Tool counts as the gun if its name is "gun" or contains any word below.
+-- If the menu says "Gun not found", add the exact name of your gun tool here (it lists the tools it can see).
+local GUN_NAMES = { "gun", "voidscope" }
 local function isGun(inst)
 	if not inst:IsA("Tool") then return false end
 	local n = string.lower(inst.Name)
-	return n == "gun" or string.find(n, "voidscope", 1, true) ~= nil
+	if n == "gun" then return true end
+	for _, word in ipairs(GUN_NAMES) do
+		if string.find(n, string.lower(word), 1, true) then return true end
+	end
+	return false
+end
+
+local function toolNames()
+	local names = {}
+	local function grab(c)
+		if not c then return end
+		for _, t in ipairs(c:GetChildren()) do
+			if t:IsA("Tool") then table.insert(names, t.Name) end
+		end
+	end
+	grab(LocalPlayer.Character)
+	grab(LocalPlayer:FindFirstChildOfClass("Backpack"))
+	return #names > 0 and table.concat(names, ", ") or "none"
 end
 
 local function openShotWindow()
@@ -1839,7 +1877,7 @@ local function hookGun(tool)
 		setGunStatus("Gun: found, " .. effects .. " beam part(s)")
 		refreshHip()
 	else
-		setGunStatus("Gun: found")
+		setGunStatus("Gun: found (" .. tool.Name .. ")")
 	end
 	for _, d in ipairs(tool:GetDescendants()) do
 		watchSound(d)
@@ -2028,7 +2066,7 @@ local function applyColor(entry)
 		end
 	end
 	if found == 0 then
-		setGunStatus("Gun: not found yet (equip it)")
+		setGunStatus("Gun not found. Tools seen: " .. toolNames() .. " (add the right name to GUN_NAMES)")
 	else
 		setGunStatus("Gun: found, " .. effects .. " beam part(s)")
 		if not (selected and selected.mode == "texture") then setNote("") end
@@ -2757,9 +2795,21 @@ local function buildGui()
 		applyColor({ name = "Custom", color = c })
 	end)
 
-	-- shared note + footer + credit (below the page)
-	noteLabel = label(content, nextOrder(), "", 11, Color3.fromRGB(150, 150, 170), 14)
+	-- shared status lines + note + footer + credit (below the page)
+	gunLabel = label(content, nextOrder(), "Gun: looking...", 11, Color3.fromRGB(190, 192, 208), 30)
+	gunLabel.TextXAlignment = Enum.TextXAlignment.Left
+	gunLabel.TextYAlignment = Enum.TextYAlignment.Top
+	gunLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+	gunLabel.TextStrokeTransparency = 0.5
+
+	hipLabel = label(content, nextOrder(), "Hip gun: pick a colour first", 11, Color3.fromRGB(190, 192, 208), 14)
+	hipLabel.TextXAlignment = Enum.TextXAlignment.Left
+	hipLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+	hipLabel.TextStrokeTransparency = 0.5
+
+	noteLabel = label(content, nextOrder(), "", 11, Color3.fromRGB(150, 150, 170), 30)
 	noteLabel.TextXAlignment = Enum.TextXAlignment.Left
+	noteLabel.TextYAlignment = Enum.TextYAlignment.Top
 	noteLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
 	noteLabel.TextStrokeTransparency = 0.5
 
@@ -2965,6 +3015,13 @@ end
 
 if next(hooked) then
 	setGunStatus("Gun: found")
+else
+	setGunStatus("Gun: not found yet (equip it)")
+	task.delay(2, function()
+		if not next(hooked) then
+			setGunStatus("Gun not found. Tools seen: " .. toolNames() .. " (add the right name to GUN_NAMES)")
+		end
+	end)
 end
 
 -- INSTANT SWITCHING: at start, load every skin picture, preload it into the game's texture cache, and get its
