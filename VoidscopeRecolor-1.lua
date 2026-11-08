@@ -53,15 +53,6 @@ local SKIN_TEXTURES = {
 	beast   = "78396157128775",
 	kitty   = "125707015473446",
 	galaxy  = "105612826347881",
-	-- the colour scopes
-	red     = "74514059806540",
-	green   = "87308630293771",
-	orange  = "129129543552647",
-	yellow  = "109406328791418",
-	blue    = "133436489369053",
-	purple  = "82454330103213",
-	cyan    = "79146514446474",
-	pink    = "103464770625429",
 }
 
 -- button shine for the special scopes (gold bands / icy diamond facets / ruby / beast)
@@ -110,15 +101,15 @@ local GALAXY_SEQ = ColorSequence.new({
 -- "skin" = which picture from SKIN_TEXTURES the colour uses. mode / texStyle = the older built-in look, used as the
 -- backup when that skin's picture isn't filled in above.
 local COLORS = {
-	{ name = "Red",        color = Color3.fromRGB(255, 0, 0), skin = "red" },
-	{ name = "Green",      color = Color3.fromRGB(0, 255, 0), skin = "green" },
+	{ name = "Red",        color = Color3.fromRGB(255, 0, 0) },
+	{ name = "Green",      color = Color3.fromRGB(0, 255, 0) },
 	{ name = "Black",      color = Color3.fromRGB(0, 0, 0) },
-	{ name = "Orange",     color = Color3.fromRGB(255, 128, 0), skin = "orange" },
-	{ name = "Yellow",     color = Color3.fromRGB(255, 255, 0), skin = "yellow" },
-	{ name = "Blue",       color = Color3.fromRGB(0, 100, 255), skin = "blue" },
-	{ name = "Purple",     color = Color3.fromRGB(160, 32, 240), skin = "purple" },
-	{ name = "Cyan",       color = Color3.fromRGB(0, 255, 255), skin = "cyan" },
-	{ name = "Pink",       color = Color3.fromRGB(255, 190, 215), mode = "texture", texStyle = "pink", skin = "pink" },
+	{ name = "Orange",     color = Color3.fromRGB(255, 128, 0) },
+	{ name = "Yellow",     color = Color3.fromRGB(255, 255, 0) },
+	{ name = "Blue",       color = Color3.fromRGB(0, 100, 255) },
+	{ name = "Purple",     color = Color3.fromRGB(160, 32, 240) },
+	{ name = "Cyan",       color = Color3.fromRGB(0, 255, 255) },
+	{ name = "Pink",       color = Color3.fromRGB(255, 190, 215), mode = "texture", texStyle = "pink" },
 	{ name = "White",      color = Color3.fromRGB(238, 238, 244), mode = "texture", texStyle = "white" },
 	{ name = "Rainbow",    color = Color3.fromRGB(255, 60, 200), mode = "texture", texStyle = "rainbow", gradient = true, rainbowFx = true },
 	{ name = "Gold",       color = Color3.fromRGB(255, 200, 40), mode = "texture", texStyle = "gold", skin = "gold", reflectance = 0.45,
