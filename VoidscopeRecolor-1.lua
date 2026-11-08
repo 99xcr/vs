@@ -1,5 +1,5 @@
--- VESTA LOADING SCREEN
-local VestaLoader = (function()
+-- VESTA LOADING SCREEN (black screen, bubbly title, small "loading" at the bottom)
+do
 	local Players = game:GetService("Players")
 	local RunService = game:GetService("RunService")
 	local TweenService = game:GetService("TweenService")
@@ -8,8 +8,8 @@ local VestaLoader = (function()
 
 	local FONT = Enum.Font.FredokaOne -- bubbly font
 	local TITLE = "VESTA RECOLOR"
-	local MIN_TIME = 3     -- shortest time the screen shows (seconds)
-	local MAX_TIME = 12    -- gives up waiting after this long and fades anyway
+	local MIN_TIME = 2.5   -- shortest time the screen shows (seconds)
+	local MAX_TIME = 5     -- gives up waiting after this long and fades anyway
 
 	local old = genv.VestaLoaderGui
 	if old then pcall(function() old:Destroy() end) end
@@ -20,10 +20,10 @@ local VestaLoader = (function()
 	sg.ResetOnSpawn = false
 	sg.DisplayOrder = 999999
 	pcall(function() sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling end)
-	local ok = pcall(function()
+	local okParent = pcall(function()
 		sg.Parent = (gethui and gethui()) or game:GetService("CoreGui")
 	end)
-	if not ok or not sg.Parent then
+	if not okParent or not sg.Parent then
 		sg.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
 	end
 	genv.VestaLoaderGui = sg
@@ -43,13 +43,14 @@ local VestaLoader = (function()
 		local b = Instance.new("Frame")
 		b.Size = UDim2.new(0, size, 0, size)
 		b.AnchorPoint = Vector2.new(0.5, 0.5)
-		b.BackgroundColor3 = Color3.fromHSV(math.random(), 0.5, 1)
-		b.BackgroundTransparency = 0.88
+		local shade = math.random(90, 255)
+		b.BackgroundColor3 = Color3.fromRGB(shade, shade, shade)
+		b.BackgroundTransparency = 0.9
 		b.BorderSizePixel = 0
 		b.Parent = root
 		Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
 		local s = Instance.new("UIStroke")
-		s.Color = Color3.fromHSV(math.random(), 0.4, 1)
+		s.Color = Color3.fromRGB(shade, shade, shade)
 		s.Thickness = 1.5
 		s.Transparency = 0.6
 		s.Parent = b
@@ -140,7 +141,8 @@ local VestaLoader = (function()
 			d.l.Position = UDim2.new((d.i - 0.5) / n, 0, 0.5 + bounce + (1 - pop) * 0.7, 0)
 			d.l.Rotation = math.sin(t * 3 + d.i) * 4
 			d.l.TextTransparency = 1 - pop
-			local c = Color3.fromHSV((t * 0.12 + d.i * 0.05) % 1, 0.55, 1)
+			local gray = 0.62 + 0.38 * math.sin(t * 2.2 - d.i * 0.5)
+			local c = Color3.new(gray, gray, gray)
 			d.l.TextColor3 = c
 			d.g.Color = c
 			d.g.Transparency = 1 - pop * 0.55
@@ -151,7 +153,7 @@ local VestaLoader = (function()
 		end
 		local slide = (t * 0.9) % 1.7 - 0.5
 		bar.Position = UDim2.new(slide, 0, 0, 0)
-		barGrad.Color = ColorSequence.new(Color3.fromHSV((t * 0.2) % 1, 0.5, 1), Color3.fromHSV((t * 0.2 + 0.25) % 1, 0.5, 1))
+		barGrad.Color = ColorSequence.new(Color3.fromRGB(110, 110, 115), Color3.fromRGB(245, 245, 245))
 		loadText.Text = "loading" .. string.rep(".", math.floor(t * 2.5) % 4)
 	end)
 
@@ -176,9 +178,8 @@ local VestaLoader = (function()
 		end
 		finish()
 	end)
+end
 
-	return { finish = finish }
-end)()
 print("[Voidscope Recolor] loading...")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -191,7 +192,7 @@ local LocalPlayer = Players.LocalPlayer
 local SHOT_WINDOW = 1.0          -- seconds after you fire during which new effects count as your shot
 local SHOT_RADIUS = 30           -- studs from you within which a new effect counts as your shot
 local OVERLAY_TRANSPARENCY = 0.6 -- only used if the texture tint isn't supported (colour wash)
-local BUBBLY_FONT = Enum.Font.GothamBold   -- menu font (try Enum.Font.GothamBlack for even bolder)
+local BUBBLY_FONT = Enum.Font.FredokaOne   -- bubbly menu font used everywhere (try Enum.Font.GothamBlack for a sharper look)
 local MENU_OUTLINE = Color3.fromRGB(70, 74, 88)
 local BUTTON_OUTLINE = Color3.fromRGB(120, 125, 142)  -- glass rim around every button
 local BUTTON_SELECTED = Color3.fromRGB(0, 150, 235)
@@ -2446,7 +2447,7 @@ local function label(frame, order, text, size, color, height)
 	l.LayoutOrder = order
 	l.Size = UDim2.new(1, 0, 0, height)
 	l.BackgroundTransparency = 1
-	l.Font = Enum.Font.Gotham
+	l.Font = BUBBLY_FONT
 	l.TextSize = size
 	l.TextColor3 = color
 	l.TextWrapped = true
@@ -3177,7 +3178,7 @@ local function buildGui()
 	local hint = Instance.new("TextLabel")
 	hint.Size = UDim2.new(0.6, 0, 1, 0)
 	hint.BackgroundTransparency = 1
-	hint.Font = Enum.Font.Gotham
+	hint.Font = BUBBLY_FONT
 	hint.TextSize = 11
 	hint.TextColor3 = Color3.fromRGB(150, 152, 168)
 	hint.TextStrokeColor3 = Color3.new(0, 0, 0)
@@ -3475,3 +3476,4 @@ env.VoidscopeRecolorCleanup = function()
 end
 
 print("[Voidscope Recolor] loaded")
+env.VestaLoadDone = true -- tells the loading screen it can fade out
