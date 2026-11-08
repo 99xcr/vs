@@ -16,8 +16,9 @@ local BUTTON_OUTLINE = Color3.fromRGB(120, 125, 142)  -- glass rim around every 
 local BUTTON_SELECTED = Color3.fromRGB(0, 150, 235)
 
 -- TRAIL SETTINGS
-local TRAIL_LIFETIME = 0.8   -- how long the trail lingers (seconds)
-local TRAIL_WIDTH = 0.4      -- how thick the trail is at the tip (studs)
+local TRAIL_LIFETIME = 0.6   -- how long the trail lingers (seconds)
+local TRAIL_WIDTH = 0.22     -- how thick the trail is (studs), smaller = thinner
+local TRAIL_END = "back"     -- "back" = comes off the very back of the gun, "front" = off the tip
 local TRAIL_FLIP = false     -- if the trail comes off the wrong end of the gun, set this to true
 
 -- EDITABLE IMAGE SPEED SETTINGS (only used by the built-in backup textures, see SKIN_TEXTURES below)
@@ -47,10 +48,8 @@ local WHITE_INVERT = false
 local SKIN_TEXTURES = {
 	gold    = "91851946033992",
 	diamond = "82154314380330",
-	black   = "132102202059454",
 	ruby    = "92501356713156",
 	beast   = "78396157128775",
-	white   = "99398506651641",
 }
 
 -- button shine for the special scopes (gold bands / icy diamond facets / ruby / beast)
@@ -88,14 +87,14 @@ local BEAST_SEQ = ColorSequence.new({
 local COLORS = {
 	{ name = "Red",        color = Color3.fromRGB(255, 0, 0) },
 	{ name = "Green",      color = Color3.fromRGB(0, 255, 0) },
-	{ name = "Black",      color = Color3.fromRGB(0, 0, 0), skin = "black" },
+	{ name = "Black",      color = Color3.fromRGB(0, 0, 0) },
 	{ name = "Orange",     color = Color3.fromRGB(255, 128, 0) },
 	{ name = "Yellow",     color = Color3.fromRGB(255, 255, 0) },
 	{ name = "Blue",       color = Color3.fromRGB(0, 100, 255) },
 	{ name = "Purple",     color = Color3.fromRGB(160, 32, 240) },
 	{ name = "Cyan",       color = Color3.fromRGB(0, 255, 255) },
 	{ name = "Pink",       color = Color3.fromRGB(255, 190, 215), mode = "texture", texStyle = "pink" },
-	{ name = "White",      color = Color3.fromRGB(238, 238, 244), mode = "texture", texStyle = "white", skin = "white" },
+	{ name = "White",      color = Color3.fromRGB(238, 238, 244), mode = "texture", texStyle = "white" },
 	{ name = "Rainbow",    color = Color3.fromRGB(255, 60, 200), mode = "texture", texStyle = "rainbow", gradient = true, rainbowFx = true },
 	{ name = "Gold",       color = Color3.fromRGB(255, 200, 40), mode = "texture", texStyle = "gold", skin = "gold", reflectance = 0.45,
 		btnGradient = GOLD_SEQ, effectSeq = GOLD_SEQ },
@@ -800,7 +799,7 @@ end -- end of texture-style block
 
 -- built-in looks that are prepared in the background (a style is skipped when its skin picture is filled in)
 local PREBUILD_STYLES = { "rainbow", "gold", "diamond", "ruby", "pink", "white", "beast" }
-local SKIN_OF_STYLE = { gold = "gold", diamond = "diamond", ruby = "ruby", white = "white", beast = "beast" }
+local SKIN_OF_STYLE = { gold = "gold", diamond = "diamond", ruby = "ruby", beast = "beast" }
 
 local function percentileOf(hist, total, p)
 	if total == 0 then return p end
@@ -1339,6 +1338,7 @@ local function aimTip(allParts)
 	local root = char and char:FindFirstChild("HumanoidRootPart")
 	local cam = Workspace.CurrentCamera
 	local dir = (root and root.CFrame.LookVector) or (cam and cam.CFrame.LookVector) or Vector3.new(0, 0, -1)
+	if TRAIL_END == "back" then dir = -dir end
 	if TRAIL_FLIP then dir = -dir end
 	local faces, best, lo = {}, -math.huge, math.huge
 	for _, p in ipairs(parts) do
@@ -1354,7 +1354,7 @@ local function aimTip(allParts)
 	end
 	-- among the faces right at the front, take the one on the biggest part (the barrel, not a little sight)
 	local pick
-	local window = math.max((best - lo) * 0.06, 0.15)
+	local window = (TRAIL_END == "back") and math.max((best - lo) * 0.015, 0.04) or math.max((best - lo) * 0.06, 0.15)
 	for _, f in ipairs(faces) do
 		if f.score >= best - window then
 			if not pick or f.part.Size.Magnitude > pick.part.Size.Magnitude then pick = f end
@@ -1363,7 +1363,7 @@ local function aimTip(allParts)
 	if not pick then return nil end
 	local up = pick.part.CFrame:VectorToObjectSpace(Vector3.new(0, 1, 0))
 	local side = up.Magnitude > 0.01 and up.Unit * (TRAIL_WIDTH / 2) or Vector3.new(TRAIL_WIDTH / 2, 0, 0)
-	return pick.part, pick.pos, side, "front tip of the gun (the way you aim)"
+	return pick.part, pick.pos, side, (TRAIL_END == "back") and "very back of the gun" or "front tip of the gun"
 end
 
 local function findTip(allParts, gripPos, useAim)
@@ -1509,7 +1509,7 @@ local function buildTrail(tool, allParts, gripPos)
 	local isTool = typeof(tool) == "Instance"
 	local learned = learnedTip[tool]
 	local useLearned = false
-	if learned and learned.part and learned.part.Parent then
+	if TRAIL_END ~= "back" and learned and learned.part and learned.part.Parent then
 		useLearned = true
 		-- only trust where the shot left the gun if that is really out at the front, not the middle
 		local ap, atip = aimTip(allParts)
@@ -1524,7 +1524,7 @@ local function buildTrail(tool, allParts, gripPos)
 	if useLearned then
 		ref, tip, side, how = learned.part, learned.pos, Vector3.new(TRAIL_WIDTH / 2, 0, 0), "where your shot leaves the gun"
 	else
-		ref, tip, side, how = findTip(allParts, gripPos, isTool)
+		ref, tip, side, how = findTip(allParts, gripPos, true)
 	end
 	if not ref then return end
 	print("[Voidscope Recolor] trail tip = " .. how .. " (on part '" .. ref.Name .. "')")
@@ -1829,7 +1829,8 @@ end
 
 local function ensureTrail(key, getParts, gripFn)
 	local made = trails[key]
-	if made and made.trail and made.trail.Parent then
+	if made and made.trail and made.trail.Parent and made.a0 and made.a0.Parent and made.a1 and made.a1.Parent then
+		if not made.trail.Enabled then made.trail.Enabled = true end
 		trailLook(made.trail)
 		return
 	end
@@ -1861,7 +1862,7 @@ local lastTrailCheck = 0
 connect(RunService.Heartbeat, function()
 	if not (trailOn and selected) then return end
 	local now = os.clock()
-	if now - lastTrailCheck < 1.5 then return end
+	if now - lastTrailCheck < 0.4 then return end
 	lastTrailCheck = now
 	refreshTrails()
 end)
@@ -2015,6 +2016,21 @@ watchCharacter(LocalPlayer.Character)
 connect(LocalPlayer.CharacterAdded, watchCharacter)
 connect(LocalPlayer.ChildAdded, function(c)
 	if c:IsA("Backpack") then scan(c) end
+end)
+
+-- after a round ends / you respawn the game hands you a brand new gun: pick it up again within a second
+local lastRehook = 0
+connect(RunService.Heartbeat, function()
+	local now = os.clock()
+	if now - lastRehook < 1 then return end
+	lastRehook = now
+	for _, c in ipairs({ LocalPlayer.Character, LocalPlayer:FindFirstChildOfClass("Backpack") }) do
+		if c then
+			for _, child in ipairs(c:GetChildren()) do
+				if isGun(child) and not hooked[child] then hookGun(child) end
+			end
+		end
+	end
 end)
 
 connect(UserInputService.InputBegan, function(input, processed)
@@ -3125,6 +3141,7 @@ task.spawn(function()
 	for tool in pairs(hooked) do
 		if tool.Parent then prebuildSkins(tool) end
 	end
+	local pending = #list
 	for _, content in ipairs(list) do
 		task.spawn(function()
 			local status
@@ -3136,8 +3153,46 @@ task.spawn(function()
 				warn("[Voidscope Recolor] the '" .. tostring(key) .. "' picture failed to load. Save it as '" .. tostring(key) .. ".png' in your executor's workspace folder.")
 				setNote("The " .. tostring(key) .. " skin picture was blocked by the game, use " .. tostring(key) .. ".png in your workspace folder.")
 			end
+			pending -= 1
 		end)
 	end
+	-- once everything is downloaded, show each skin for a moment on a tiny hidden copy of a gun part, so the
+	-- graphics card has already decoded them and the first click on a skin has nothing left to load
+	local waited = 0
+	while pending > 0 and waited < 20 do
+		task.wait(0.1)
+		waited += 0.1
+	end
+	local src, srcTool
+	for tool in pairs(hooked) do
+		if tool.Parent then
+			for _, d in ipairs(tool:GetDescendants()) do
+				local okt, tex = pcall(function() return d:IsA("MeshPart") and d.TextureID or "" end)
+				if okt and tex ~= "" and (not src or d.Size.Magnitude > src.Size.Magnitude) then src, srcTool = d, tool end
+			end
+		end
+	end
+	if not src then return end
+	pcall(function()
+		local cam = Workspace.CurrentCamera
+		local dummy = src:Clone()
+		for _, c in ipairs(dummy:GetChildren()) do c:Destroy() end
+		dummy.Anchored = true
+		dummy.CanCollide = false
+		dummy.CanQuery = false
+		dummy.CanTouch = false
+		dummy.Size = src.Size * 0.15
+		dummy.Parent = cam
+		for _, content in ipairs(list) do
+			if cam then dummy.CFrame = cam.CFrame * CFrame.new(0, 0, -3) end
+			local sa = Instance.new("SurfaceAppearance")
+			sa.ColorMap = content
+			sa.Parent = dummy
+			task.wait(0.07)
+			sa:Destroy()
+		end
+		dummy:Destroy()
+	end)
 end)
 
 local pre = env.VoidscopeColor
