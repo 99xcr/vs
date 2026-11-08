@@ -24,7 +24,7 @@ local TRAIL_FLIP = false     -- if the trail comes off the wrong end of the gun,
 local MAX_TEX = 512              -- sharper; built once in the background so it doesn't hurt switching (384 = lighter)
 local BUDGET_BACKGROUND = 0.006  -- seconds of each frame used while quietly pre-building textures
 local BUDGET_WAITING = 0.03      -- if you click a style that isn't ready, it gets most of the frame
-local PREBUILD_DELAY = 0         -- start building every style the moment the gun is found
+local PREBUILD_DELAY = 4         -- seconds before the built-in backup looks (Rainbow / Pink) start building; skins are readied instantly
 local MARBLE_SCALE = 1.6         -- backup Diamond / Ruby / Beast pattern size
 
 -- WHITE SCOPE (backup texture only): if the black ends up on the wrong parts, set this to true
@@ -46,7 +46,6 @@ local WHITE_INVERT = false
 ---------------------------------------------------------------------
 local SKIN_TEXTURES = {
 	gold    = "91851946033992",
-	pink    = "136181484569381",
 	diamond = "82154314380330",
 	black   = "132102202059454",
 	ruby    = "92501356713156",
@@ -95,7 +94,7 @@ local COLORS = {
 	{ name = "Blue",       color = Color3.fromRGB(0, 100, 255) },
 	{ name = "Purple",     color = Color3.fromRGB(160, 32, 240) },
 	{ name = "Cyan",       color = Color3.fromRGB(0, 255, 255) },
-	{ name = "Pink",       color = Color3.fromRGB(255, 190, 215), mode = "texture", texStyle = "pink", skin = "pink" },
+	{ name = "Pink",       color = Color3.fromRGB(255, 190, 215), mode = "texture", texStyle = "pink" },
 	{ name = "White",      color = Color3.fromRGB(238, 238, 244), mode = "texture", texStyle = "white", skin = "white" },
 	{ name = "Rainbow",    color = Color3.fromRGB(255, 60, 200), mode = "texture", texStyle = "rainbow", gradient = true, rainbowFx = true },
 	{ name = "Gold",       color = Color3.fromRGB(255, 200, 40), mode = "texture", texStyle = "gold", skin = "gold", reflectance = 0.45,
@@ -455,7 +454,10 @@ end
 
 -- appearances left on a mesh by an earlier run of the script (the effect stays after closing) get cleared away
 -- so the new run's look is the one that shows
+local purged = setmetatable({}, { __mode = "k" })
 local function purgeStray(mp)
+	if purged[mp] then return end
+	purged[mp] = true
 	for _, c in ipairs(mp:GetChildren()) do
 		if c.Name == "VSSurface" and c:IsA("SurfaceAppearance") and not ours[c] then
 			pcall(function() c:Destroy() end)
@@ -798,7 +800,7 @@ end -- end of texture-style block
 
 -- built-in looks that are prepared in the background (a style is skipped when its skin picture is filled in)
 local PREBUILD_STYLES = { "rainbow", "gold", "diamond", "ruby", "pink", "white", "beast" }
-local SKIN_OF_STYLE = { gold = "gold", diamond = "diamond", ruby = "ruby", pink = "pink", white = "white", beast = "beast" }
+local SKIN_OF_STYLE = { gold = "gold", diamond = "diamond", ruby = "ruby", white = "white", beast = "beast" }
 
 local function percentileOf(hist, total, p)
 	if total == 0 then return p end
@@ -1325,7 +1327,46 @@ local function handleGrip(parts)
 	return nil
 end
 
-local function findTip(allParts, gripPos)
+-- the tip = the middle of the face of the gun that points furthest the way you are aiming
+local function aimTip(allParts)
+	local parts = {}
+	for _, p in ipairs(allParts) do
+		if p.Transparency < 1 then table.insert(parts, p) end
+	end
+	if #parts == 0 then parts = allParts end
+	if #parts == 0 then return nil end
+	local char = LocalPlayer.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	local cam = Workspace.CurrentCamera
+	local dir = (root and root.CFrame.LookVector) or (cam and cam.CFrame.LookVector) or Vector3.new(0, 0, -1)
+	if TRAIL_FLIP then dir = -dir end
+	local faces, best, lo = {}, -math.huge, math.huge
+	for _, p in ipairs(parts) do
+		for _, axis in ipairs({ "X", "Y", "Z" }) do
+			for sign = -1, 1, 2 do
+				local localPos = withAxis(Vector3.zero, axis, sign * p.Size[axis] / 2)
+				local score = p.CFrame:PointToWorldSpace(localPos):Dot(dir)
+				table.insert(faces, { part = p, pos = localPos, score = score })
+				if score > best then best = score end
+				if score < lo then lo = score end
+			end
+		end
+	end
+	-- among the faces right at the front, take the one on the biggest part (the barrel, not a little sight)
+	local pick
+	local window = math.max((best - lo) * 0.06, 0.15)
+	for _, f in ipairs(faces) do
+		if f.score >= best - window then
+			if not pick or f.part.Size.Magnitude > pick.part.Size.Magnitude then pick = f end
+		end
+	end
+	if not pick then return nil end
+	local up = pick.part.CFrame:VectorToObjectSpace(Vector3.new(0, 1, 0))
+	local side = up.Magnitude > 0.01 and up.Unit * (TRAIL_WIDTH / 2) or Vector3.new(TRAIL_WIDTH / 2, 0, 0)
+	return pick.part, pick.pos, side, "front tip of the gun (the way you aim)"
+end
+
+local function findTip(allParts, gripPos, useAim)
 	local parts = {}
 	for _, p in ipairs(allParts) do
 		if p.Transparency < 1 then table.insert(parts, p) end
@@ -1336,6 +1377,11 @@ local function findTip(allParts, gripPos)
 	local markerPart, markerPos = findMuzzle(allParts)
 	if markerPart then
 		return markerPart, markerPos, Vector3.new(TRAIL_WIDTH / 2, 0, 0), "the gun's muzzle point"
+	end
+
+	if useAim then
+		local ap, atip, aside, ahow = aimTip(allParts)
+		if ap then return ap, atip, aside, ahow end
 	end
 
 	if gripPos then
@@ -1460,11 +1506,25 @@ end
 local function buildTrail(tool, allParts, gripPos)
 	removeTrail(tool)
 	local ref, tip, side, how
+	local isTool = typeof(tool) == "Instance"
 	local learned = learnedTip[tool]
+	local useLearned = false
 	if learned and learned.part and learned.part.Parent then
+		useLearned = true
+		-- only trust where the shot left the gun if that is really out at the front, not the middle
+		local ap, atip = aimTip(allParts)
+		if ap and isTool then
+			local a = ap.CFrame:PointToWorldSpace(atip)
+			local l = learned.part.CFrame:PointToWorldSpace(learned.pos)
+			local biggest = 1
+			for _, q in ipairs(allParts) do biggest = math.max(biggest, q.Size.Magnitude) end
+			useLearned = (a - l).Magnitude <= math.max(biggest * 0.3, 1)
+		end
+	end
+	if useLearned then
 		ref, tip, side, how = learned.part, learned.pos, Vector3.new(TRAIL_WIDTH / 2, 0, 0), "where your shot leaves the gun"
 	else
-		ref, tip, side, how = findTip(allParts, gripPos)
+		ref, tip, side, how = findTip(allParts, gripPos, isTool)
 	end
 	if not ref then return end
 	print("[Voidscope Recolor] trail tip = " .. how .. " (on part '" .. ref.Name .. "')")
@@ -1897,7 +1957,7 @@ local function hookGun(tool)
 	hooked[tool] = true
 	print("[Voidscope Recolor] found gun: " .. tool:GetFullName())
 	task.delay(PREBUILD_DELAY, prebuildTextures, tool) -- builds the backup looks quietly in the background
-	task.delay(PREBUILD_DELAY, prebuildSkins, tool)    -- makes every skin ready on every gun part (instant switching)
+	task.spawn(prebuildSkins, tool)                    -- makes every skin ready on every gun part right now (instant switching)
 	local effects = paintGun(tool)
 	if selected then
 		setGunStatus("Gun: found, " .. effects .. " beam part(s)")
@@ -2186,7 +2246,7 @@ local function buildGui()
 	end
 
 	local WIDTH = 290   -- width of the page area
-	local TABW = 88     -- width of the side tab column on the left
+	local TABW = 0      -- no side tab column
 
 	local function photoText(b, size)
 		b.Font = BUBBLY_FONT
@@ -2340,6 +2400,7 @@ local function buildGui()
 	sidebar.BorderSizePixel = 0
 	sidebar.ZIndex = 2
 	sidebar.Parent = frame
+	sidebar.Visible = false
 	Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 12)
 	local sideStroke = Instance.new("UIStroke")
 	sideStroke.Color = BUTTON_OUTLINE
@@ -3050,8 +3111,8 @@ else
 	end)
 end
 
--- INSTANT SWITCHING: at start, load every skin picture, preload it into the game's texture cache, and get its
--- appearance ready on every gun part, so clicking a skin later only swaps it in.
+-- INSTANT SWITCHING: at start, every skin is made ready on every gun part straight away, and every picture is
+-- warmed up in parallel (not one after another), so clicking a skin only swaps it in.
 task.spawn(function()
 	local list, keyOf = {}, {}
 	for key in pairs(SKIN_TEXTURES) do
@@ -3061,29 +3122,21 @@ task.spawn(function()
 			keyOf[content] = key
 		end
 	end
-	if #list > 0 then
-		local bad = {}
-		pcall(function()
-			ContentProvider:PreloadAsync(list, function(id, status)
-				if status == Enum.AssetFetchStatus.Failure or status == Enum.AssetFetchStatus.TimedOut then
-					table.insert(bad, id)
-				end
-			end)
-		end)
-		local names = {}
-		for _, id in ipairs(bad) do
-			local key = keyOf[id]
-			if key then
-				table.insert(names, key)
-				warn("[Voidscope Recolor] the '" .. key .. "' picture (" .. tostring(id) .. ") failed to load. Roblox only lets a game use your uploaded images if you own that game, so use a local file instead: save it as '" .. key .. ".png' in your executor's workspace folder.")
-			end
-		end
-		if #names > 0 then
-			setNote("Skin pictures blocked by the game: " .. table.concat(names, ", ") .. ". Put <name>.png files in your executor's workspace folder instead.")
-		end
-	end
 	for tool in pairs(hooked) do
 		if tool.Parent then prebuildSkins(tool) end
+	end
+	for _, content in ipairs(list) do
+		task.spawn(function()
+			local status
+			pcall(function()
+				ContentProvider:PreloadAsync({ content }, function(_, st) status = st end)
+			end)
+			if status == Enum.AssetFetchStatus.Failure or status == Enum.AssetFetchStatus.TimedOut then
+				local key = keyOf[content]
+				warn("[Voidscope Recolor] the '" .. tostring(key) .. "' picture failed to load. Save it as '" .. tostring(key) .. ".png' in your executor's workspace folder.")
+				setNote("The " .. tostring(key) .. " skin picture was blocked by the game, use " .. tostring(key) .. ".png in your workspace folder.")
+			end
+		end)
 	end
 end)
 
