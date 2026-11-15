@@ -271,7 +271,13 @@ local function setupSpeed(tool)
 	tool.Destroying:Connect(restore)
 end
 
--- ===== BLOW DRYER (hold click: loud air blast toward your mouse, pushes parts, light recoil on you) =====
+-- status messages from gears show in the menu's status line
+local Hooks = {}
+local function say(msg)
+	if Hooks.status then Hooks.status(msg) end
+end
+
+-- ===== BLOW DRYER (hold click / hold tap: strong air blast toward your mouse, pushes parts, launches you back) =====
 local function setupDryer(tool)
 	local handle = getHandle(tool)
 	local holding = false
@@ -287,20 +293,22 @@ local function setupDryer(tool)
 
 	local emitter = Instance.new("ParticleEmitter")
 	emitter.Name = "Wind"
+	emitter.Texture = "rbxasset://textures/particles/smoke_main.dds"
 	emitter.Rate = 0
 	emitter.Lifetime = NumberRange.new(0.5, 0.9)
-	emitter.Speed = NumberRange.new(55, 70)
+	emitter.Speed = NumberRange.new(60, 80)
 	emitter.SpreadAngle = Vector2.new(10, 10)
-	emitter.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 2.5) })
-	emitter.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.4), NumberSequenceKeypoint.new(1, 1) })
+	emitter.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 4) })
+	emitter.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 1) })
 	emitter.Color = ColorSequence.new(Color3.fromRGB(255, 225, 240))
-	emitter.LightEmission = 0.3
+	emitter.LightEmission = 0.4
 	emitter.EmitDirection = Enum.NormalId.Front
 	emitter.Parent = att
 
-	local RANGE, PUSH, RECOIL = 32, 90, 45
+	local RANGE, PUSH, RECOIL, MAXSPEED = 34, 90, 160, 70
 
 	local function stopBlowing()
+		if not holding then return end
 		holding = false
 		emitter.Rate = 0
 		wind:Stop()
@@ -309,11 +317,13 @@ local function setupDryer(tool)
 
 	local function startBlowing()
 		if holding then return end
-		local char = getChar()
-		local hrp = char:FindFirstChild("HumanoidRootPart")
+		local char = player.Character
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		if not (char and tool.Parent == char) then return end
 		holding = true
-		emitter.Rate = 150
+		emitter.Rate = 250
 		wind:Play()
+		say("Blow Dryer: blowing")
 
 		local params = OverlapParams.new()
 		params.FilterType = Enum.RaycastFilterType.Exclude
@@ -328,9 +338,11 @@ local function setupDryer(tool)
 			local look = aim.Unit
 			att.WorldCFrame = CFrame.lookAt(origin, origin + look)
 
-			-- recoil: the blast gently pushes you the other way
+			-- strong recoil: you get pushed the opposite way (aim down to lift yourself up)
 			if hrp and hrp.Parent then
-				hrp.AssemblyLinearVelocity = hrp.AssemblyLinearVelocity - look * RECOIL * dt
+				local v = hrp.AssemblyLinearVelocity - look * RECOIL * dt
+				if v.Magnitude > MAXSPEED then v = v.Unit * MAXSPEED end
+				hrp.AssemblyLinearVelocity = v
 			end
 
 			-- push loose parts and other players in the cone (only parts your client owns will really move)
@@ -349,10 +361,23 @@ local function setupDryer(tool)
 		end)
 	end
 
+	tool.Equipped:Connect(function() say("Blow Dryer equipped - hold click to blow") end)
 	tool.Activated:Connect(startBlowing)
 	tool.Deactivated:Connect(stopBlowing)
 	tool.Unequipped:Connect(stopBlowing)
 	tool.Destroying:Connect(stopBlowing)
+
+	-- backup input in case the gear's own Activated event never fires
+	local function isPress(i)
+		return i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch
+	end
+	UserInputService.InputBegan:Connect(function(i, processed)
+		if processed or not isPress(i) then return end
+		if tool.Parent and tool.Parent == player.Character then startBlowing() end
+	end)
+	UserInputService.InputEnded:Connect(function(i)
+		if isPress(i) then stopBlowing() end
+	end)
 end
 
 -- ===== ROCKET LAUNCHER =====
@@ -544,6 +569,7 @@ local statusLabel
 local function status(msg)
 	if statusLabel then statusLabel.Text = msg end
 end
+Hooks.status = status
 
 local function buildGui()
 	local genv = (getgenv and getgenv()) or _G
