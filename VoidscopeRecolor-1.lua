@@ -302,7 +302,7 @@ local function setupDryer(tool)
 	emitter.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 1) })
 	emitter.Color = ColorSequence.new(Color3.fromRGB(255, 225, 240))
 	emitter.LightEmission = 0.4
-	emitter.EmitDirection = Enum.NormalId.Front
+	emitter.EmissionDirection = Enum.NormalId.Front
 	emitter.Parent = att
 
 	local RANGE, PUSH, RECOIL, MAXSPEED = 34, 90, 160, 70
