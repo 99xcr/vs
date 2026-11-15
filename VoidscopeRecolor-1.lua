@@ -19,13 +19,13 @@ local GEARS = {
 	{ name = "Rainbow Carpet",     kind = "carpet",  id = 225921000,  speed = 90,  color = "rainbow", trail = "rainbow" },
 	{ name = "Gold Carpet",        kind = "carpet",  id = 1016183873, speed = 70,  color = Color3.fromRGB(255, 200, 40),
 		trail = ColorSequence.new(Color3.fromRGB(255, 200, 40), Color3.fromRGB(255, 240, 150)) },
-	{ name = "Black Magic Carpet", kind = "carpet",  id = 0,          speed = 110, color = Color3.fromRGB(15, 15, 18),
+	{ name = "Black Magic Carpet", kind = "carpet",  id = 103235041,          speed = 110, color = Color3.fromRGB(15, 15, 18),
 		trail = ColorSequence.new(Color3.fromRGB(20, 0, 30), Color3.fromRGB(110, 0, 170)) },
-	{ name = "Blow Dryer",         kind = "dryer",   id = 0 },
+	{ name = "Blow Dryer",         kind = "dryer",   id = 11719016 },
 	{ name = "Sea Bow",            kind = "seabow",  id = 236438668 },
 	{ name = "Gravity Coil",       kind = "gravity", id = 16688968 },
 	{ name = "Speed Coil",         kind = "speed",   id = 99119158 },
-	{ name = "Rocket Launcher",    kind = "rocket",  id = 0 },
+	{ name = "Rocket Launcher",    kind = "rocket",  id = 32356064 },
 }
 
 local SHOT_SOUND_ID = "rbxassetid://99204505"
@@ -127,7 +127,7 @@ local function loadTool(cfg)
 	return tool, reason
 end
 
--- ===== CARPETS (WASD / thumbstick to fly toward the camera, Space = up, Ctrl = down) =====
+-- ===== CARPETS (held in your hand; WASD / thumbstick flies toward the camera, Space = up, Ctrl = down) =====
 local controls
 pcall(function()
 	controls = require(player.PlayerScripts:WaitForChild("PlayerModule", 3)):GetControls()
@@ -144,19 +144,19 @@ local function getMove()
 end
 
 local function setupCarpet(tool, cfg)
+	-- the carpet stays in your hand the whole time; flying is done by moving your character
 	local handle = getHandle(tool)
-	local model, bv, bg, loop
+	local bv, bg, loop, trail, a0, a1
 
 	local function stop()
 		if loop then loop:Disconnect() loop = nil end
 		if bv then bv:Destroy() bv = nil end
 		if bg then bg:Destroy() bg = nil end
-		if model then model:Destroy() model = nil end
+		if trail then trail:Destroy() trail = nil end
+		if a0 then a0:Destroy() a0 = nil end
+		if a1 then a1:Destroy() a1 = nil end
 		local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 		if hum then hum.PlatformStand = false end
-		for _, p in ipairs(tool:GetDescendants()) do
-			if p:IsA("BasePart") then p.LocalTransparencyModifier = 0 end
-		end
 	end
 
 	local function start()
@@ -166,59 +166,15 @@ local function setupCarpet(tool, cfg)
 		local hum = char:FindFirstChildOfClass("Humanoid")
 		if not (hrp and hum and handle) then return end
 
-		-- copy every visible part of the real gear under the feet, then hide the held one
-		local base = hrp.CFrame * CFrame.new(0, -2.9, 0) * (cfg.rot or CFrame.new())
-		model = Instance.new("Model")
-		model.Name = "FlyingCarpet"
-		local root
-		for _, p in ipairs(tool:GetDescendants()) do
-			if p:IsA("BasePart") then
-				local c = p:Clone()
-				if c then
-					for _, d in ipairs(c:GetDescendants()) do
-						if d:IsA("Script") or d:IsA("LocalScript") or d:IsA("Weld")
-							or d:IsA("WeldConstraint") or d:IsA("Motor6D") then
-							d:Destroy()
-						end
-					end
-					c.Anchored = false
-					c.CanCollide = false
-					c.Massless = true
-					c.CFrame = base * handle.CFrame:ToObjectSpace(p.CFrame)
-					c.Parent = model
-					if p == handle then root = c end
-				end
-			end
-		end
-		if not root then model:Destroy() model = nil return end
-		model.PrimaryPart = root
-		for _, c in ipairs(model:GetChildren()) do
-			if c:IsA("BasePart") and c ~= root then
-				local w = Instance.new("WeldConstraint")
-				w.Part0 = root
-				w.Part1 = c
-				w.Parent = c
-			end
-		end
-		local seat = Instance.new("WeldConstraint")
-		seat.Part0 = hrp
-		seat.Part1 = root
-		seat.Parent = root
-		model.Parent = char
-
-		for _, p in ipairs(tool:GetDescendants()) do
-			if p:IsA("BasePart") then p.LocalTransparencyModifier = 1 end
-		end
-
-		-- trail
-		local half = root.Size * 0.45
-		local a0 = Instance.new("Attachment")
-		a0.Position = Vector3.new(-half.X, 0, half.Z)
-		a0.Parent = root
-		local a1 = Instance.new("Attachment")
-		a1.Position = Vector3.new(half.X, 0, half.Z)
-		a1.Parent = root
-		local trail = Instance.new("Trail")
+		-- trail on the carpet in your hand
+		local half = handle.Size * 0.45
+		a0 = Instance.new("Attachment")
+		a0.Position = Vector3.new(-half.X, 0, 0)
+		a0.Parent = handle
+		a1 = Instance.new("Attachment")
+		a1.Position = Vector3.new(half.X, 0, 0)
+		a1.Parent = handle
+		trail = Instance.new("Trail")
 		trail.Attachment0 = a0
 		trail.Attachment1 = a1
 		trail.Lifetime = 1.2
@@ -229,7 +185,7 @@ local function setupCarpet(tool, cfg)
 		elseif cfg.trail then
 			trail.Color = cfg.trail
 		end
-		trail.Parent = root
+		trail.Parent = handle
 
 		hum.PlatformStand = true
 		bv = Instance.new("BodyVelocity")
@@ -246,7 +202,7 @@ local function setupCarpet(tool, cfg)
 		local fallback = tool:GetAttribute("Fallback")
 		local hue = 0
 		loop = RunService.Heartbeat:Connect(function(dt)
-			if not (hrp.Parent and model) then return stop() end
+			if not hrp.Parent then return stop() end
 			local cam = workspace.CurrentCamera.CFrame
 			local mv = getMove()
 			local dir = cam.RightVector * mv.X + cam.LookVector * -mv.Z
@@ -261,9 +217,9 @@ local function setupCarpet(tool, cfg)
 			if fallback then
 				if cfg.color == "rainbow" then
 					hue = (hue + dt * 0.4) % 1
-					tintInstance(model, Color3.fromHSV(hue, 1, 1))
+					tintInstance(tool, Color3.fromHSV(hue, 1, 1))
 				elseif typeof(cfg.color) == "Color3" then
-					tintInstance(model, cfg.color)
+					tintInstance(tool, cfg.color)
 				end
 			end
 		end)
