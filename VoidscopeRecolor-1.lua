@@ -9,6 +9,7 @@ local Players = game:GetService("Players")
 local Debris = game:GetService("Debris")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
 local mouse = player:GetMouse()
@@ -277,7 +278,32 @@ local function say(msg)
 	if Hooks.status then Hooks.status(msg) end
 end
 
--- ===== BLOW DRYER (hold click / hold tap: strong air blast toward your mouse, pushes parts, launches you back) =====
+-- one puff of visible wind (a real part, so it always shows even if particles are hidden)
+local function windPuff(origin, look)
+	local p = Instance.new("Part")
+	p.Shape = Enum.PartType.Ball
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.Material = Enum.Material.SmoothPlastic
+	p.Color = Color3.fromRGB(255, 225, 240)
+	p.Transparency = 0.4
+	p.Size = Vector3.new(1.2, 1.2, 1.2)
+	p.Position = origin + look * 2
+	p.Parent = workspace
+	local spread = Vector3.new(math.random() - 0.5, math.random() - 0.5, math.random() - 0.5) * 3
+	TweenService:Create(p, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Position = origin + look * 34 + spread,
+		Size = Vector3.new(7, 7, 7),
+		Transparency = 1,
+	}):Play()
+	Debris:AddItem(p, 0.6)
+end
+
+-- ===== BLOW DRYER (hold click / hold tap) =====
+-- Aims where your CAMERA looks (so the joystick no longer steers it), shoots visible wind,
+-- pushes loose parts, and blows YOU hard the opposite way. Aim down to fly up.
 local function setupDryer(tool)
 	local handle = getHandle(tool)
 	local holding = false
@@ -286,14 +312,12 @@ local function setupDryer(tool)
 	local wind = addSound(handle, "Blow", DRYER_SOUND_ID, 0.7)
 	wind.Looped = true
 
-	-- the attachment is turned toward your mouse every frame, so the air always leaves the nozzle toward where you aim
 	local att = Instance.new("Attachment")
 	att.Name = "WindOrigin"
 	att.Parent = handle
 
 	local emitter = Instance.new("ParticleEmitter")
 	emitter.Name = "Wind"
-	emitter.Texture = "rbxasset://textures/particles/smoke_main.dds"
 	emitter.Rate = 0
 	emitter.Lifetime = NumberRange.new(0.5, 0.9)
 	emitter.Speed = NumberRange.new(60, 80)
@@ -302,10 +326,10 @@ local function setupDryer(tool)
 	emitter.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 1) })
 	emitter.Color = ColorSequence.new(Color3.fromRGB(255, 225, 240))
 	emitter.LightEmission = 0.4
-	-- no direction property is set: the default emits along the attachment's up axis and we aim that axis below
 	emitter.Parent = att
 
-	local RANGE, PUSH, RECOIL, MAXSPEED = 34, 90, 160, 70
+	local RANGE, PUSH = 34, 90
+	local ACC, MAXSPEED, UP = 700, 150, 200 -- how hard you get blown (raise ACC / MAXSPEED for more)
 
 	local function stopBlowing()
 		if not holding then return end
@@ -313,36 +337,44 @@ local function setupDryer(tool)
 		emitter.Rate = 0
 		wind:Stop()
 		if loopConn then loopConn:Disconnect() loopConn = nil end
+		local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+		if hum then hum.PlatformStand = false end
 	end
 
 	local function startBlowing()
 		if holding then return end
 		local char = player.Character
 		local hrp = char and char:FindFirstChild("HumanoidRootPart")
-		if not (char and tool.Parent == char) then return end
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if not (char and hrp and tool.Parent == char) then return end
 		holding = true
 		emitter.Rate = 250
 		wind:Play()
 		say("Blow Dryer: blowing")
+		-- stops the walking controller from fighting the blast
+		if hum then hum.PlatformStand = true end
 
 		local params = OverlapParams.new()
 		params.FilterType = Enum.RaycastFilterType.Exclude
 		params.FilterDescendantsInstances = { char }
 
-		local acc = 0
+		local acc, puffT = 0, 0
 		loopConn = RunService.Heartbeat:Connect(function(dt)
-			if not (holding and tool.Parent == char and handle.Parent) then return stopBlowing() end
+			if not (holding and tool.Parent == char and handle.Parent and hrp.Parent) then return stopBlowing() end
 			local origin = handle.Position
-			local aim = mouse.Hit.Position - origin
-			if aim.Magnitude < 0.1 then return end
-			local look = aim.Unit
+			local look = workspace.CurrentCamera.CFrame.LookVector
 			att.WorldCFrame = CFrame.lookAt(origin, origin + look) * CFrame.Angles(-math.pi / 2, 0, 0)
 
-			-- strong recoil: you get pushed the opposite way (aim down to lift yourself up)
-			if hrp and hrp.Parent then
-				local v = hrp.AssemblyLinearVelocity - look * RECOIL * dt
-				if v.Magnitude > MAXSPEED then v = v.Unit * MAXSPEED end
-				hrp.AssemblyLinearVelocity = v
+			-- blow yourself hard the opposite way (plus a little lift so you slide instead of scraping the floor)
+			local v = hrp.AssemblyLinearVelocity - look * ACC * dt + Vector3.new(0, UP * dt, 0)
+			if v.Magnitude > MAXSPEED then v = v.Unit * MAXSPEED end
+			hrp.AssemblyLinearVelocity = v
+
+			-- visible wind
+			puffT += dt
+			if puffT >= 0.03 then
+				puffT = 0
+				windPuff(origin, look)
 			end
 
 			-- push loose parts and other players in the cone (only parts your client owns will really move)
@@ -361,7 +393,7 @@ local function setupDryer(tool)
 		end)
 	end
 
-	tool.Equipped:Connect(function() say("Blow Dryer equipped - hold click to blow") end)
+	tool.Equipped:Connect(function() say("Blow Dryer equipped - hold click/tap to blow") end)
 	tool.Activated:Connect(startBlowing)
 	tool.Deactivated:Connect(stopBlowing)
 	tool.Unequipped:Connect(stopBlowing)
@@ -614,7 +646,7 @@ local function buildGui()
 	round(bar, 12)
 	mk("TextLabel", {
 		Size = UDim2.new(1, -80, 1, 0), Position = UDim2.new(0, 12, 0, 0), BackgroundTransparency = 1,
-		Font = Enum.Font.GothamBold, Text = "VESTA GEARS v3", TextSize = 15, TextColor3 = Color3.new(1, 1, 1),
+		Font = Enum.Font.GothamBold, Text = "VESTA GEARS v4", TextSize = 15, TextColor3 = Color3.new(1, 1, 1),
 		TextXAlignment = Enum.TextXAlignment.Left,
 	}, bar)
 	local minBtn = mk("TextButton", {
