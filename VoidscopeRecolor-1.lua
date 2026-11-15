@@ -1,51 +1,55 @@
--- VESTA GEARS MENU
--- Built-in gears + fly / speed / gravity / jump gears found from Roblox and added to the menu automatically.
--- id = 0 -> built-in model. If a real ID fails to load, the built-in model is used.
+-- VESTA GEARS MENU (v2)
+-- Original gears + the gears you picked. Real Roblox gears are loaded with GetObjects, their original scripts
+-- are deleted, and Vesta's own logic runs on them. If an ID fails to load, a built-in model is used instead.
 -- Menu: drag title bar, "-" minimises, "X" closes menu (gears stay), RightShift hides/shows.
-
--- ===== SETTINGS =====
-local AUTO_LOAD = true        -- false = skip the web search, built-in gears only
-local PER_WORD_PAGES = 1      -- pages of results per keyword (30 each)
-local MAX_PER_CATEGORY = 60   -- most gears listed per category
-local REQUEST_GAP = 0.3       -- seconds to wait after each web request (stops the game freezing)
 
 local Players = game:GetService("Players")
 local Debris = game:GetService("Debris")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
-local HttpService = game:GetService("HttpService")
 
 local player = Players.LocalPlayer
 local mouse = player:GetMouse()
 
--- ===== BUILT-IN GEAR LIST =====
+-- ===== GEAR LIST =====
+-- kind: carpet (fly) / speed / gravity / jump / melee / dryer / seabow / rocket
+-- speed = fly speed or run speed, lift = how much gravity is cancelled (1 = none left), power = jump power
 local GEARS = {
-	-- FLY
+	-- ORIGINAL GEARS
 	{ name = "Rainbow Carpet",     kind = "carpet", id = 225921000,  speed = 90,  color = "rainbow", trail = "rainbow" },
 	{ name = "Gold Carpet",        kind = "carpet", id = 1016183873, speed = 70,  color = Color3.fromRGB(255, 200, 40),
 		trail = ColorSequence.new(Color3.fromRGB(255, 200, 40), Color3.fromRGB(255, 240, 150)) },
 	{ name = "Black Magic Carpet", kind = "carpet", id = 402305186,  speed = 110, color = Color3.fromRGB(15, 15, 18),
 		trail = ColorSequence.new(Color3.fromRGB(0, 0, 0), Color3.fromRGB(30, 30, 30)), trailEmission = 0 },
-	{ name = "Jetpack",            kind = "carpet", id = 0, speed = 100, color = Color3.fromRGB(120, 120, 130), size = Vector3.new(1.5, 2.5, 1) },
-	{ name = "Angel Wings",        kind = "carpet", id = 0, speed = 80,  color = Color3.fromRGB(245, 245, 255), size = Vector3.new(5, 0.3, 2) },
-	{ name = "Super Fly Board",    kind = "carpet", id = 0, speed = 160, color = Color3.fromRGB(60, 120, 255), size = Vector3.new(2, 0.3, 5) },
-	-- SPEED
-	{ name = "Speed Coil",         kind = "speed",  id = 99119158, speed = 40 },
-	{ name = "Super Speed Coil",   kind = "speed",  id = 0, speed = 80, color = Color3.fromRGB(255, 80, 80) },
-	{ name = "Sprint Boots",       kind = "speed",  id = 0, speed = 60, color = Color3.fromRGB(255, 160, 40) },
-	-- GRAVITY
-	{ name = "Gravity Coil",       kind = "gravity", id = 16688968, lift = 0.75 },
-	{ name = "Moon Gravity Coil",  kind = "gravity", id = 0, lift = 0.9,  color = Color3.fromRGB(200, 200, 230) },
-	{ name = "Feather",            kind = "gravity", id = 0, lift = 0.85, color = Color3.fromRGB(255, 255, 255) },
-	-- JUMP
-	{ name = "Jump Coil",          kind = "jump",   id = 0, power = 130, color = Color3.fromRGB(80, 220, 120) },
-	{ name = "Pogo Stick",         kind = "jump",   id = 0, power = 160, color = Color3.fromRGB(255, 90, 160) },
-	{ name = "Spring Shoes",       kind = "jump",   id = 0, power = 110, color = Color3.fromRGB(255, 220, 60) },
-	-- OTHER
 	{ name = "Blow Dryer",         kind = "dryer",  id = 11719016 },
 	{ name = "Sea Bow",            kind = "seabow", id = 236438668 },
+	{ name = "Gravity Coil",       kind = "gravity", id = 16688968, lift = 0.75 },
+	{ name = "Speed Coil",         kind = "speed",  id = 99119158, speed = 40 },
 	{ name = "Rocket Launcher",    kind = "rocket", id = 32356064 },
+
+	-- NEW: COILS
+	{ name = "Dual Speed Coil",    kind = "speed",  id = 99119158, speed = 110 },   -- Speed Coil, way faster
+	{ name = "Dual Gravity Coil",  kind = "gravity", id = 150366274, lift = 0.875 }, -- 2x the Gravity Coil effect
+
+	-- NEW: FLY
+	{ name = "Flying Magic Carpet",          kind = "carpet", id = 71037028,  speed = 80 },
+	{ name = "Sinister Flying Magic Carpet", kind = "carpet", id = 103235041, speed = 100 },
+	{ name = "Deluxe Rainbow Magic Carpet",  kind = "carpet", id = 477910063, speed = 100, trail = "rainbow" },
+	{ name = "Flying Vacuum",                kind = "carpet", id = 313547087, speed = 85 },
+	{ name = "Flying Reindeer",              kind = "carpet", id = 330296266, speed = 85 },
+	{ name = "Broom",                        kind = "carpet", id = 36913601,  speed = 80 },
+	{ name = "Flying Carpet of Books",       kind = "carpet", id = 498752764, speed = 80 },
+	{ name = "Zoom Broom 5000",              kind = "carpet", id = 511930668, speed = 130 },
+	{ name = "Ghost Ride",                   kind = "carpet", id = 179369627, speed = 90 },
+
+	-- NEW: JUMP
+	{ name = "Spring-loaded Jumping Stilts", kind = "jump", id = 226206639, power = 130 },
+	{ name = "Vaulting Pole",                kind = "jump", id = 88143166,  power = 140 },
+
+	-- NEW: OTHER
+	{ name = "Bug Juice",                    kind = "speed", id = 57229313, speed = 60 },
+	{ name = "Spec Alpha Biograft Energy Sword", kind = "melee", id = 11999235 },
 }
 
 local SHOT_SOUND_ID = "rbxassetid://99204505"
@@ -93,6 +97,7 @@ local function say(msg)
 	if Hooks.status then Hooks.status(msg) end
 end
 
+-- shots go to the middle of the screen on phones, to the mouse on PC
 local function aimPoint(origin, ignore)
 	if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
 		local cam = workspace.CurrentCamera
@@ -107,6 +112,7 @@ local function aimPoint(origin, ignore)
 	return mouse.Hit.Position
 end
 
+-- run fn when the gear is used (its own Activated event + a backup click/tap)
 local function onUse(tool, fn)
 	tool.Activated:Connect(fn)
 	local conn = UserInputService.InputBegan:Connect(function(i, processed)
@@ -126,25 +132,26 @@ local function fallbackTool(cfg)
 	h.CanCollide = false
 	h.Material = Enum.Material.SmoothPlastic
 	if cfg.kind == "carpet" then
-		h.Size = cfg.size or Vector3.new(4, 0.3, 6)
+		h.Size = Vector3.new(4, 0.3, 6)
+		h.Color = (typeof(cfg.color) == "Color3") and cfg.color or Color3.new(1, 0, 0)
 	elseif cfg.kind == "dryer" then
 		h.Size = Vector3.new(0.8, 0.8, 1.8)
 		h.Color = Color3.fromRGB(220, 60, 120)
 	elseif cfg.kind == "rocket" then
 		h.Size = Vector3.new(1, 1, 4)
 		h.Color = Color3.fromRGB(70, 90, 70)
+	elseif cfg.kind == "melee" then
+		h.Size = Vector3.new(0.4, 0.4, 3.5)
+		h.Color = Color3.fromRGB(80, 200, 255)
+		h.Material = Enum.Material.Neon
 	else
 		h.Size = Vector3.new(1, 1.4, 1)
-	end
-	if typeof(cfg.color) == "Color3" then
-		h.Color = cfg.color
-	elseif cfg.color == "rainbow" then
-		h.Color = Color3.new(1, 0, 0)
 	end
 	h.Parent = tool
 	return tool
 end
 
+-- returns tool, reason (reason is nil when the real model loaded)
 local function loadTool(cfg)
 	local tool, reason
 	if cfg.id and cfg.id ~= 0 then
@@ -162,10 +169,11 @@ local function loadTool(cfg)
 			reason = "GetObjects failed"
 		end
 	else
-		reason = "built-in"
+		reason = "no ID set"
 	end
 	if not tool then tool = fallbackTool(cfg) end
 	tool.Name = cfg.name
+	-- the real gear's own scripts are removed; Vesta's logic runs instead
 	for _, d in ipairs(tool:GetDescendants()) do
 		if d:IsA("Script") or d:IsA("LocalScript") then d:Destroy() end
 	end
@@ -180,7 +188,8 @@ local function loadTool(cfg)
 	return tool, reason
 end
 
--- ===== FLY =====
+-- ===== FLY (carpets, brooms, vacuum, reindeer, ghost ride...) =====
+-- WASD / thumbstick flies toward where the camera looks, Space = up, Ctrl = down
 local controls
 task.spawn(function()
 	pcall(function()
@@ -266,6 +275,7 @@ local function setupCarpet(tool, cfg)
 			if flat.Magnitude > 0.01 then
 				bg.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flat)
 			end
+			-- only the built-in carpet gets the colour effect; real models keep their own look
 			if fallback and cfg.color == "rainbow" then
 				hue = (hue + dt * 0.4) % 1
 				tintInstance(tool, Color3.fromHSV(hue, 1, 1))
@@ -278,7 +288,7 @@ local function setupCarpet(tool, cfg)
 	tool.Destroying:Connect(stop)
 end
 
--- ===== GRAVITY =====
+-- ===== GRAVITY (Gravity Coil, Dual Gravity Coil) =====
 local function setupGravity(tool, cfg)
 	local force, loop
 	local function stop()
@@ -300,7 +310,7 @@ local function setupGravity(tool, cfg)
 	tool.Destroying:Connect(stop)
 end
 
--- ===== SPEED =====
+-- ===== SPEED (Speed Coil, Dual Speed Coil, Bug Juice) =====
 local function setupSpeed(tool, cfg)
 	local old
 	local function restore()
@@ -319,7 +329,7 @@ local function setupSpeed(tool, cfg)
 	tool.Destroying:Connect(restore)
 end
 
--- ===== JUMP =====
+-- ===== JUMP (Jumping Stilts, Vaulting Pole) =====
 local function setupJump(tool, cfg)
 	local old
 	local function restore()
@@ -339,7 +349,23 @@ local function setupJump(tool, cfg)
 	tool.Destroying:Connect(restore)
 end
 
--- ===== BLOW DRYER =====
+-- ===== MELEE (Energy Sword) =====
+local function setupMelee(tool)
+	local ready = true
+	onUse(tool, function()
+		if not ready then return end
+		ready = false
+		-- the character's own Animate script plays the swing when this value appears in the tool
+		local v = Instance.new("StringValue")
+		v.Name = "toolanim"
+		v.Value = "Slash"
+		v.Parent = tool
+		Debris:AddItem(v, 0.5)
+		task.delay(0.5, function() ready = true end)
+	end)
+end
+
+-- ===== BLOW DRYER (hold click / hold tap) =====
 local function windPuff(origin, look)
 	local p = Instance.new("Part")
 	p.Shape = Enum.PartType.Ball
@@ -507,6 +533,7 @@ local function setupRocket(tool)
 			ex.DestroyJointRadiusPercent = 0
 			ex.Parent = workspace
 			rocket.Hit:Play()
+			-- rocket jump
 			local hrp = char:FindFirstChild("HumanoidRootPart")
 			if hrp then
 				local d = hrp.Position - pos
@@ -582,6 +609,7 @@ local function setupSeaBow(tool)
 	end)
 end
 
+-- smoother jump out of water while the Sea Bow is equipped
 do
 	local JUMP_POWER, BOOST_FRAMES = 78, 8
 	UserInputService.JumpRequest:Connect(function()
@@ -608,10 +636,11 @@ do
 	end)
 end
 
--- ===== give / remove (built-in gears) =====
+-- ===== give / remove =====
 local SETUP = {
 	carpet = setupCarpet, dryer = setupDryer, seabow = setupSeaBow,
-	gravity = setupGravity, speed = setupSpeed, jump = setupJump, rocket = setupRocket,
+	gravity = setupGravity, speed = setupSpeed, jump = setupJump,
+	rocket = setupRocket, melee = setupMelee,
 }
 
 local HINTS = {
@@ -622,10 +651,11 @@ local HINTS = {
 	gravity = " - low gravity is on",
 	speed = " - you run faster",
 	jump = " - you jump higher",
+	melee = " - tap to swing",
 }
 
-local active = {} -- name/key -> tool
-local wanted = {} -- built-in gears given again after respawn
+local active = {} -- name -> tool
+local wanted = {} -- name -> true (given again after respawn)
 
 local function removeGear(cfg)
 	wanted[cfg.name] = nil
@@ -634,202 +664,33 @@ local function removeGear(cfg)
 	active[cfg.name] = nil
 end
 
+-- returns ok, message
 local function giveGear(cfg)
 	removeGear(cfg)
 	local backpack = player:WaitForChild("Backpack")
+	local why
 	local ok, err = pcall(function()
-		local tool = loadTool(cfg)
+		local tool, reason = loadTool(cfg)
 		SETUP[cfg.kind](tool, cfg)
 		tool.Equipped:Connect(function()
 			say(cfg.name .. " equipped" .. (HINTS[cfg.kind] or ""))
 		end)
 		tool.Parent = backpack
 		active[cfg.name] = tool
+		why = reason
 	end)
 	if not ok then
 		return false, cfg.name .. " failed: " .. tostring(err)
 	end
 	wanted[cfg.name] = true
+	if why then
+		return true, cfg.name .. ": built-in model used (" .. why .. ") - equip it from your hotbar"
+	end
 	return true, cfg.name .. " given - equip it from your hotbar"
-end
-
--- ===== AUTO-LOADED GEARS (anti-freeze version) =====
--- Every web request is followed by a short wait, dead hosts are skipped, and rows are added in small batches,
--- so the game keeps running while the list fills in.
-local httpRequest = (syn and syn.request) or (http and http.request) or http_request or request or (fluxus and fluxus.request)
-local wantedGeneric = {} -- key -> { id, name, kind }
-
-local CATEGORIES = {
-	{ kind = "carpet",  label = "FLY GEARS",     words = { "flying carpet", "jetpack", "wings", "hoverboard", "broom" } },
-	{ kind = "speed",   label = "SPEED GEARS",   words = { "speed coil", "speed gear", "sprint", "speed boots" } },
-	{ kind = "gravity", label = "GRAVITY GEARS", words = { "gravity coil", "low gravity", "anti gravity", "balloon" } },
-	{ kind = "jump",    label = "JUMP GEARS",    words = { "jump coil", "super jump", "pogo", "spring shoes" } },
-}
-
-local TOOL_HOSTS = { "https://apis.roblox.com", "https://apis.roproxy.com" }
-local CAT_HOSTS = { "https://catalog.roblox.com", "https://catalog.roproxy.com" }
-local deadHost = {}
-
-local function allDead()
-	for _, h in ipairs(TOOL_HOSTS) do if not deadHost[h] then return false end end
-	for _, h in ipairs(CAT_HOSTS) do if not deadHost[h] then return false end end
-	return true
-end
-
--- returns the response body or nil. Prefers the executor's request function (it does not freeze the game).
-local function httpGet(url)
-	local body
-	if httpRequest then
-		local ok, res = pcall(httpRequest, { Url = url, Method = "GET" })
-		if ok and res and res.Body and (res.StatusCode == nil or res.StatusCode == 200) then body = res.Body end
-	else
-		local ok, b = pcall(function() return game:HttpGet(url) end)
-		if ok and b then body = b end
-	end
-	task.wait(REQUEST_GAP)
-	return body
-end
-
-local function decode(body)
-	local ok, data = pcall(function() return HttpService:JSONDecode(body) end)
-	if ok and type(data) == "table" then return data end
-end
-
-local function toolboxPage(keyword, cursor)
-	local qs = "limit=30&keyword=" .. HttpService:UrlEncode(keyword)
-	if cursor then qs ..= "&cursor=" .. HttpService:UrlEncode(cursor) end
-	for _, host in ipairs(TOOL_HOSTS) do
-		if not deadHost[host] then
-			local body = httpGet(host .. "/toolbox-service/v1/marketplace/10?" .. qs)
-			if not body then
-				deadHost[host] = true
-			else
-				local data = decode(body)
-				if data and type(data.data) == "table" then
-					if #data.data == 0 then return {}, nil end
-					local ids = {}
-					for _, it in ipairs(data.data) do ids[#ids + 1] = tostring(it.id) end
-					local names = {}
-					local dBody = httpGet(host .. "/toolbox-service/v1/items/details?assetIds=" .. table.concat(ids, ","))
-					local d = dBody and decode(dBody)
-					if d and type(d.data) == "table" then
-						for _, e in ipairs(d.data) do
-							local a = e.asset or e
-							if a.id then names[tonumber(a.id)] = a.name end
-						end
-					end
-					local out = {}
-					for _, id in ipairs(ids) do
-						out[#out + 1] = { id = tonumber(id), name = names[tonumber(id)] or ("Gear " .. id) }
-					end
-					return out, data.nextPageCursor
-				end
-			end
-		end
-	end
-	return {}, nil
-end
-
-local function catalogGear(keyword)
-	local qs = "SortType=0&Limit=30&Keyword=" .. HttpService:UrlEncode(keyword)
-	for _, host in ipairs(CAT_HOSTS) do
-		if not deadHost[host] then
-			local body = httpGet(host .. "/v1/search/items/details?" .. qs)
-			if not body then
-				deadHost[host] = true
-			else
-				local data = decode(body)
-				if data and type(data.data) == "table" then
-					local out = {}
-					for _, it in ipairs(data.data) do
-						if it.id and it.assetType == 19 then out[#out + 1] = { id = it.id, name = tostring(it.name) } end
-					end
-					return out
-				end
-			end
-		end
-	end
-	return {}
-end
-
--- loads a found gear, deletes ALL its scripts (toolbox models can hide backdoors), applies our own behaviour
-local function giveFound(id, name, kind)
-	local key = "cat:" .. id
-	if active[key] then pcall(function() active[key]:Destroy() end) active[key] = nil end
-	local ok, objs = pcall(function() return game:GetObjects("rbxassetid://" .. id) end)
-	if not (ok and objs and objs[1]) then return false, name .. ": could not load" end
-	local tool = objs[1]:IsA("Tool") and objs[1] or objs[1]:FindFirstChildWhichIsA("Tool", true)
-	if not tool then return false, name .. ": no Tool inside" end
-	for _, d in ipairs(tool:GetDescendants()) do
-		if d:IsA("Script") or d:IsA("LocalScript") then d:Destroy() end
-	end
-	if not getHandle(tool) then
-		local h = Instance.new("Part")
-		h.Name = "Handle" h.Size = Vector3.new(1, 1, 1) h.CanCollide = false h.Parent = tool
-	end
-	tool:SetAttribute("Fallback", false)
-	if kind == "carpet" then setupCarpet(tool, { speed = 90 })
-	elseif kind == "speed" then setupSpeed(tool, { speed = 60 })
-	elseif kind == "gravity" then setupGravity(tool, { lift = 0.8 })
-	elseif kind == "jump" then setupJump(tool, { power = 130 }) end
-	tool.Equipped:Connect(function() say(name .. " equipped" .. (HINTS[kind] or "")) end)
-	tool.Parent = player:WaitForChild("Backpack")
-	active[key] = tool
-	wantedGeneric[key] = { id = id, name = name, kind = kind }
-	return true, name .. " given - equip it from your hotbar"
-end
-
-local function removeFound(key)
-	wantedGeneric[key] = nil
-	if active[key] then pcall(function() active[key]:Destroy() end) end
-	active[key] = nil
-end
-
-local function autoLoadGears()
-	if not Hooks.addRow then return end
-	local seen, total = {}, 0
-	for _, cat in ipairs(CATEGORIES) do
-		if allDead() then break end
-		Hooks.addHeader(cat.label)
-		local catCount = 0
-		for _, word in ipairs(cat.words) do
-			if catCount >= MAX_PER_CATEGORY or allDead() then break end
-			local found = {}
-			local cursor
-			for _ = 1, PER_WORD_PAGES do
-				local items, nextC = toolboxPage(word, cursor)
-				for _, it in ipairs(items) do found[#found + 1] = it end
-				cursor = nextC
-				if not cursor then break end
-			end
-			for _, it in ipairs(catalogGear(word)) do found[#found + 1] = it end
-			local batch = 0
-			for _, it in ipairs(found) do
-				if catCount >= MAX_PER_CATEGORY then break end
-				if not seen[it.id] then
-					seen[it.id] = true
-					total += 1
-					catCount += 1
-					Hooks.addRow(it, cat.kind)
-					batch += 1
-					if batch % 4 == 0 then task.wait() end
-				end
-			end
-			say(("Loading gears... %d found"):format(total))
-		end
-	end
-	if total > 0 then
-		say(total .. " extra gears added - scroll the list")
-	elseif allDead() then
-		say("Web requests are blocked by your executor - built-in gears only")
-	else
-		say("No extra gears found")
-	end
 end
 
 -- ===== MENU =====
 local rows = {}
-local foundResets = {}
 local statusLabel
 local function status(msg)
 	if statusLabel then statusLabel.Text = msg end
@@ -868,7 +729,7 @@ local function buildGui()
 	local OFF = Color3.fromRGB(46, 46, 64)
 
 	local frame = mk("Frame", {
-		Name = "Main", Size = UDim2.new(0, 320, 0, 420), Position = UDim2.new(0.5, -160, 0.5, -210),
+		Name = "Main", Size = UDim2.new(0, 330, 0, 440), Position = UDim2.new(0.5, -165, 0.5, -220),
 		BackgroundColor3 = BG, BorderSizePixel = 0, Active = true,
 	}, gui)
 	round(frame, 12)
@@ -921,62 +782,19 @@ local function buildGui()
 	}, body)
 	mk("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, list)
 
-	-- rows for the auto-loaded gears
-	local autoOrder = 1000
-	Hooks.addHeader = function(text)
-		autoOrder += 1
-		mk("TextLabel", {
-			Size = UDim2.new(1, -6, 0, 22), BackgroundTransparency = 1, Font = Enum.Font.GothamBold, Text = text,
-			TextSize = 11, TextColor3 = Color3.fromRGB(170, 150, 255), TextXAlignment = Enum.TextXAlignment.Left,
-			LayoutOrder = autoOrder,
-		}, list)
-	end
-	Hooks.addRow = function(item, kind)
-		autoOrder += 1
-		local key = "cat:" .. item.id
-		local row = mk("Frame", { Size = UDim2.new(1, -6, 0, 34), BackgroundColor3 = PANEL, BorderSizePixel = 0, LayoutOrder = autoOrder }, list)
-		round(row, 8)
-		mk("TextLabel", {
-			Size = UDim2.new(0.62, 0, 1, 0), Position = UDim2.new(0, 10, 0, 0), BackgroundTransparency = 1,
-			Font = Enum.Font.GothamMedium, Text = tostring(item.name), TextSize = 12, TextColor3 = Color3.new(1, 1, 1),
-			TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
-		}, row)
-		local btn = mk("TextButton", {
-			Size = UDim2.new(0.3, 0, 0, 24), Position = UDim2.new(0.68, 0, 0, 5), BackgroundColor3 = OFF,
-			Font = Enum.Font.GothamBold, Text = "GIVE", TextSize = 11, TextColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0,
-		}, row)
-		round(btn, 6)
-		foundResets[key] = function()
-			btn.Text, btn.BackgroundColor3 = "GIVE", OFF
-		end
-		btn.MouseButton1Click:Connect(function()
-			local t = active[key]
-			if t and t.Parent then
-				removeFound(key)
-				btn.Text, btn.BackgroundColor3 = "GIVE", OFF
-				status(tostring(item.name) .. " removed")
-			else
-				local ok, msg = giveFound(item.id, tostring(item.name), kind)
-				btn.Text = ok and "REMOVE" or "GIVE"
-				btn.BackgroundColor3 = ok and ACCENT or OFF
-				status(msg)
-			end
-		end)
-	end
+	local TYPE_LABEL = { carpet = "FLY", speed = "SPEED", gravity = "GRAVITY", jump = "JUMP", melee = "SWORD" }
 
-	-- rows for the built-in gears
-	local TYPE_LABEL = { carpet = "FLY", speed = "SPEED", gravity = "GRAVITY", jump = "JUMP" }
 	for i, cfg in ipairs(GEARS) do
 		local row = mk("Frame", { Size = UDim2.new(1, -6, 0, 34), BackgroundColor3 = PANEL, BorderSizePixel = 0, LayoutOrder = i }, list)
 		round(row, 8)
 		mk("TextLabel", {
-			Size = UDim2.new(0.5, 0, 1, 0), Position = UDim2.new(0, 10, 0, 0), BackgroundTransparency = 1,
+			Size = UDim2.new(0.56, 0, 1, 0), Position = UDim2.new(0, 10, 0, 0), BackgroundTransparency = 1,
 			Font = Enum.Font.GothamMedium, Text = cfg.name, TextSize = 12, TextColor3 = Color3.new(1, 1, 1),
 			TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
 		}, row)
 		mk("TextLabel", {
-			Size = UDim2.new(0.2, 0, 1, 0), Position = UDim2.new(0.5, 0, 0, 0), BackgroundTransparency = 1,
-			Font = Enum.Font.Gotham, Text = TYPE_LABEL[cfg.kind] or "", TextSize = 10,
+			Size = UDim2.new(0.14, 0, 1, 0), Position = UDim2.new(0.56, 0, 0, 0), BackgroundTransparency = 1,
+			Font = Enum.Font.Gotham, Text = TYPE_LABEL[cfg.kind] or "", TextSize = 9,
 			TextColor3 = Color3.fromRGB(150, 150, 170),
 		}, row)
 		local btn = mk("TextButton", {
@@ -1013,7 +831,7 @@ local function buildGui()
 		round(b, 8)
 		return b
 	end
-	local giveAllBtn = footerButton("GIVE ALL (BUILT-IN)", 0, ACCENT)
+	local giveAllBtn = footerButton("GIVE ALL", 0, ACCENT)
 	local removeAllBtn = footerButton("REMOVE ALL", 0.5, Color3.fromRGB(125, 30, 30))
 
 	statusLabel = mk("TextLabel", {
@@ -1024,17 +842,16 @@ local function buildGui()
 	}, body)
 
 	giveAllBtn.MouseButton1Click:Connect(function()
+		local given = 0
 		for _, cfg in ipairs(GEARS) do
-			giveGear(cfg)
+			local ok = giveGear(cfg)
 			rows[cfg.name].setOn(active[cfg.name] ~= nil)
+			if ok then given += 1 end
+			task.wait() -- one gear per frame so the game never freezes
 		end
-		status("All built-in gears given - equip one from your hotbar")
+		status(("%d gears given - equip them from your hotbar"):format(given))
 	end)
 	removeAllBtn.MouseButton1Click:Connect(function()
-		for key in pairs(wantedGeneric) do
-			removeFound(key)
-			if foundResets[key] then foundResets[key]() end
-		end
 		for _, cfg in ipairs(GEARS) do
 			removeGear(cfg)
 			rows[cfg.name].setOn(false)
@@ -1046,7 +863,7 @@ local function buildGui()
 	minBtn.MouseButton1Click:Connect(function()
 		collapsed = not collapsed
 		body.Visible = not collapsed
-		frame.Size = collapsed and UDim2.new(0, 320, 0, 34) or UDim2.new(0, 320, 0, 420)
+		frame.Size = collapsed and UDim2.new(0, 330, 0, 34) or UDim2.new(0, 330, 0, 440)
 	end)
 	closeBtn.MouseButton1Click:Connect(function()
 		gui:Destroy()
@@ -1061,22 +878,14 @@ end
 
 buildGui()
 
-if AUTO_LOAD then
-	task.delay(2, function()
-		autoLoadGears()
-	end)
-end
-
 -- give the chosen gears again after every respawn
 player.CharacterAdded:Connect(function()
 	task.wait(1)
-	for _, info in pairs(wantedGeneric) do
-		giveFound(info.id, info.name, info.kind)
-	end
 	for _, cfg in ipairs(GEARS) do
 		if wanted[cfg.name] then
 			giveGear(cfg)
 			if rows[cfg.name] then rows[cfg.name].setOn(active[cfg.name] ~= nil) end
+			task.wait()
 		end
 	end
 end)
