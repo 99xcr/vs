@@ -1,7 +1,13 @@
 -- VESTA GEARS MENU
--- Built-in gears + every fly / speed / gravity / jump gear found from Roblox, added to the menu automatically.
+-- Built-in gears + fly / speed / gravity / jump gears found from Roblox and added to the menu automatically.
 -- id = 0 -> built-in model. If a real ID fails to load, the built-in model is used.
 -- Menu: drag title bar, "-" minimises, "X" closes menu (gears stay), RightShift hides/shows.
+
+-- ===== SETTINGS =====
+local AUTO_LOAD = true        -- false = skip the web search, built-in gears only
+local PER_WORD_PAGES = 1      -- pages of results per keyword (30 each)
+local MAX_PER_CATEGORY = 60   -- most gears listed per category
+local REQUEST_GAP = 0.3       -- seconds to wait after each web request (stops the game freezing)
 
 local Players = game:GetService("Players")
 local Debris = game:GetService("Debris")
@@ -176,8 +182,10 @@ end
 
 -- ===== FLY =====
 local controls
-pcall(function()
-	controls = require(player.PlayerScripts:WaitForChild("PlayerModule", 3)):GetControls()
+task.spawn(function()
+	pcall(function()
+		controls = require(player.PlayerScripts:WaitForChild("PlayerModule", 3)):GetControls()
+	end)
 end)
 
 local function getMove()
@@ -645,25 +653,41 @@ local function giveGear(cfg)
 	return true, cfg.name .. " given - equip it from your hotbar"
 end
 
--- ===== AUTO-LOADED GEARS (found from Roblox when the script starts) =====
+-- ===== AUTO-LOADED GEARS (anti-freeze version) =====
+-- Every web request is followed by a short wait, dead hosts are skipped, and rows are added in small batches,
+-- so the game keeps running while the list fills in.
 local httpRequest = (syn and syn.request) or (http and http.request) or http_request or request or (fluxus and fluxus.request)
 local wantedGeneric = {} -- key -> { id, name, kind }
 
 local CATEGORIES = {
-	{ kind = "carpet",  label = "FLY GEARS",     words = { "flying carpet", "jetpack", "wings", "hoverboard", "broom", "glider", "fly gear", "ufo" } },
-	{ kind = "speed",   label = "SPEED GEARS",   words = { "speed coil", "speed gear", "sprint", "speed boots", "rocket skates" } },
-	{ kind = "gravity", label = "GRAVITY GEARS", words = { "gravity coil", "low gravity", "anti gravity", "balloon", "moon gravity" } },
-	{ kind = "jump",    label = "JUMP GEARS",    words = { "jump coil", "super jump", "pogo", "spring shoes", "stilts" } },
+	{ kind = "carpet",  label = "FLY GEARS",     words = { "flying carpet", "jetpack", "wings", "hoverboard", "broom" } },
+	{ kind = "speed",   label = "SPEED GEARS",   words = { "speed coil", "speed gear", "sprint", "speed boots" } },
+	{ kind = "gravity", label = "GRAVITY GEARS", words = { "gravity coil", "low gravity", "anti gravity", "balloon" } },
+	{ kind = "jump",    label = "JUMP GEARS",    words = { "jump coil", "super jump", "pogo", "spring shoes" } },
 }
-local PER_WORD_PAGES = 2 -- pages of results per keyword (30 each). Raise for more gears.
 
+local TOOL_HOSTS = { "https://apis.roblox.com", "https://apis.roproxy.com" }
+local CAT_HOSTS = { "https://catalog.roblox.com", "https://catalog.roproxy.com" }
+local deadHost = {}
+
+local function allDead()
+	for _, h in ipairs(TOOL_HOSTS) do if not deadHost[h] then return false end end
+	for _, h in ipairs(CAT_HOSTS) do if not deadHost[h] then return false end end
+	return true
+end
+
+-- returns the response body or nil. Prefers the executor's request function (it does not freeze the game).
 local function httpGet(url)
+	local body
 	if httpRequest then
 		local ok, res = pcall(httpRequest, { Url = url, Method = "GET" })
-		if ok and res and res.Body and (res.StatusCode == nil or res.StatusCode == 200) then return res.Body end
+		if ok and res and res.Body and (res.StatusCode == nil or res.StatusCode == 200) then body = res.Body end
+	else
+		local ok, b = pcall(function() return game:HttpGet(url) end)
+		if ok and b then body = b end
 	end
-	local ok, body = pcall(function() return game:HttpGet(url) end)
-	if ok and body then return body end
+	task.wait(REQUEST_GAP)
+	return body
 end
 
 local function decode(body)
@@ -674,24 +698,33 @@ end
 local function toolboxPage(keyword, cursor)
 	local qs = "limit=30&keyword=" .. HttpService:UrlEncode(keyword)
 	if cursor then qs ..= "&cursor=" .. HttpService:UrlEncode(cursor) end
-	for _, host in ipairs({ "https://apis.roblox.com", "https://apis.roproxy.com" }) do
-		local data = decode(httpGet(host .. "/toolbox-service/v1/marketplace/10?" .. qs) or "")
-		if data and type(data.data) == "table" and #data.data > 0 then
-			local ids = {}
-			for _, it in ipairs(data.data) do ids[#ids + 1] = tostring(it.id) end
-			local names = {}
-			local d = decode(httpGet(host .. "/toolbox-service/v1/items/details?assetIds=" .. table.concat(ids, ",")) or "")
-			if d and type(d.data) == "table" then
-				for _, e in ipairs(d.data) do
-					local a = e.asset or e
-					if a.id then names[tonumber(a.id)] = a.name end
+	for _, host in ipairs(TOOL_HOSTS) do
+		if not deadHost[host] then
+			local body = httpGet(host .. "/toolbox-service/v1/marketplace/10?" .. qs)
+			if not body then
+				deadHost[host] = true
+			else
+				local data = decode(body)
+				if data and type(data.data) == "table" then
+					if #data.data == 0 then return {}, nil end
+					local ids = {}
+					for _, it in ipairs(data.data) do ids[#ids + 1] = tostring(it.id) end
+					local names = {}
+					local dBody = httpGet(host .. "/toolbox-service/v1/items/details?assetIds=" .. table.concat(ids, ","))
+					local d = dBody and decode(dBody)
+					if d and type(d.data) == "table" then
+						for _, e in ipairs(d.data) do
+							local a = e.asset or e
+							if a.id then names[tonumber(a.id)] = a.name end
+						end
+					end
+					local out = {}
+					for _, id in ipairs(ids) do
+						out[#out + 1] = { id = tonumber(id), name = names[tonumber(id)] or ("Gear " .. id) }
+					end
+					return out, data.nextPageCursor
 				end
 			end
-			local out = {}
-			for _, id in ipairs(ids) do
-				out[#out + 1] = { id = tonumber(id), name = names[tonumber(id)] or ("Gear " .. id) }
-			end
-			return out, data.nextPageCursor
 		end
 	end
 	return {}, nil
@@ -699,14 +732,21 @@ end
 
 local function catalogGear(keyword)
 	local qs = "SortType=0&Limit=30&Keyword=" .. HttpService:UrlEncode(keyword)
-	for _, host in ipairs({ "https://catalog.roblox.com", "https://catalog.roproxy.com" }) do
-		local data = decode(httpGet(host .. "/v1/search/items/details?" .. qs) or "")
-		if data and type(data.data) == "table" then
-			local out = {}
-			for _, it in ipairs(data.data) do
-				if it.id and it.assetType == 19 then out[#out + 1] = { id = it.id, name = tostring(it.name) } end
+	for _, host in ipairs(CAT_HOSTS) do
+		if not deadHost[host] then
+			local body = httpGet(host .. "/v1/search/items/details?" .. qs)
+			if not body then
+				deadHost[host] = true
+			else
+				local data = decode(body)
+				if data and type(data.data) == "table" then
+					local out = {}
+					for _, it in ipairs(data.data) do
+						if it.id and it.assetType == 19 then out[#out + 1] = { id = it.id, name = tostring(it.name) } end
+					end
+					return out
+				end
 			end
-			return out
 		end
 	end
 	return {}
@@ -747,14 +787,13 @@ end
 
 local function autoLoadGears()
 	if not Hooks.addRow then return end
-	if not (httpRequest or pcall(function() return game.HttpGet end)) then
-		say("Your executor can't make web requests, so only the built-in gears are available")
-		return
-	end
 	local seen, total = {}, 0
 	for _, cat in ipairs(CATEGORIES) do
+		if allDead() then break end
 		Hooks.addHeader(cat.label)
+		local catCount = 0
 		for _, word in ipairs(cat.words) do
+			if catCount >= MAX_PER_CATEGORY or allDead() then break end
 			local found = {}
 			local cursor
 			for _ = 1, PER_WORD_PAGES do
@@ -764,22 +803,33 @@ local function autoLoadGears()
 				if not cursor then break end
 			end
 			for _, it in ipairs(catalogGear(word)) do found[#found + 1] = it end
+			local batch = 0
 			for _, it in ipairs(found) do
+				if catCount >= MAX_PER_CATEGORY then break end
 				if not seen[it.id] then
 					seen[it.id] = true
 					total += 1
+					catCount += 1
 					Hooks.addRow(it, cat.kind)
+					batch += 1
+					if batch % 4 == 0 then task.wait() end
 				end
 			end
 			say(("Loading gears... %d found"):format(total))
 		end
 	end
-	say(total > 0 and (total .. " extra gears added - scroll the list") or "No extra gears found (web requests may be blocked)")
+	if total > 0 then
+		say(total .. " extra gears added - scroll the list")
+	elseif allDead() then
+		say("Web requests are blocked by your executor - built-in gears only")
+	else
+		say("No extra gears found")
+	end
 end
 
 -- ===== MENU =====
 local rows = {}
-local foundResets = {} -- key -> function that flips a found gear's button back to GIVE
+local foundResets = {}
 local statusLabel
 local function status(msg)
 	if statusLabel then statusLabel.Text = msg end
@@ -1010,7 +1060,12 @@ local function buildGui()
 end
 
 buildGui()
-task.spawn(autoLoadGears)
+
+if AUTO_LOAD then
+	task.delay(2, function()
+		autoLoadGears()
+	end)
+end
 
 -- give the chosen gears again after every respawn
 player.CharacterAdded:Connect(function()
