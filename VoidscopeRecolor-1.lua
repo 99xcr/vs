@@ -19,8 +19,8 @@ local GEARS = {
 	{ name = "Rainbow Carpet",     kind = "carpet",  id = 225921000,  speed = 90,  color = "rainbow", trail = "rainbow" },
 	{ name = "Gold Carpet",        kind = "carpet",  id = 1016183873, speed = 70,  color = Color3.fromRGB(255, 200, 40),
 		trail = ColorSequence.new(Color3.fromRGB(255, 200, 40), Color3.fromRGB(255, 240, 150)) },
-	{ name = "Black Magic Carpet", kind = "carpet",  id = 103235041,          speed = 110, color = Color3.fromRGB(15, 15, 18),
-		trail = ColorSequence.new(Color3.fromRGB(20, 0, 30), Color3.fromRGB(110, 0, 170)) },
+	{ name = "Black Magic Carpet", kind = "carpet",  id = 402305186,          speed = 110, color = Color3.fromRGB(15, 15, 18),
+		trail = ColorSequence.new(Color3.fromRGB(0, 0, 0), Color3.fromRGB(30, 30, 30)), trailEmission = 0 },
 	{ name = "Blow Dryer",         kind = "dryer",   id = 11719016 },
 	{ name = "Sea Bow",            kind = "seabow",  id = 236438668 },
 	{ name = "Gravity Coil",       kind = "gravity", id = 16688968 },
@@ -30,6 +30,7 @@ local GEARS = {
 
 local SHOT_SOUND_ID = "rbxassetid://99204505"
 local HIT_SOUND_ID = "rbxassetid://58274204"
+local DRYER_SOUND_ID = "rbxassetid://11717967" -- looping blow dryer motor/air sound
 
 -- ===== helpers =====
 local function getChar()
@@ -178,8 +179,8 @@ local function setupCarpet(tool, cfg)
 		trail.Attachment0 = a0
 		trail.Attachment1 = a1
 		trail.Lifetime = 1.2
-		trail.LightEmission = 0.6
-		trail.Transparency = NumberSequence.new(0.2, 1)
+		trail.LightEmission = cfg.trailEmission or 0.6
+		trail.Transparency = NumberSequence.new(0.1, 1)
 		if cfg.trail == "rainbow" then
 			trail.Color = rainbowSequence()
 		elseif cfg.trail then
@@ -270,47 +271,88 @@ local function setupSpeed(tool)
 	tool.Destroying:Connect(restore)
 end
 
--- ===== BLOW DRYER (hold click: wind pushes loose parts in front of you) =====
+-- ===== BLOW DRYER (hold click: loud air blast toward your mouse, pushes parts, light recoil on you) =====
 local function setupDryer(tool)
 	local handle = getHandle(tool)
 	local holding = false
+	local loopConn
+
+	local wind = addSound(handle, "Blow", DRYER_SOUND_ID, 0.7)
+	wind.Looped = true
+
+	-- the attachment is turned toward your mouse every frame, so the air always leaves the nozzle toward where you aim
+	local att = Instance.new("Attachment")
+	att.Name = "WindOrigin"
+	att.Parent = handle
+
 	local emitter = Instance.new("ParticleEmitter")
 	emitter.Name = "Wind"
 	emitter.Rate = 0
 	emitter.Lifetime = NumberRange.new(0.5, 0.9)
-	emitter.Speed = NumberRange.new(45, 60)
-	emitter.SpreadAngle = Vector2.new(12, 12)
-	emitter.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.4), NumberSequenceKeypoint.new(1, 2) })
-	emitter.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 1) })
-	emitter.Color = ColorSequence.new(Color3.fromRGB(255, 220, 235))
+	emitter.Speed = NumberRange.new(55, 70)
+	emitter.SpreadAngle = Vector2.new(10, 10)
+	emitter.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 2.5) })
+	emitter.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.4), NumberSequenceKeypoint.new(1, 1) })
+	emitter.Color = ColorSequence.new(Color3.fromRGB(255, 225, 240))
+	emitter.LightEmission = 0.3
 	emitter.EmitDirection = Enum.NormalId.Front
-	emitter.Parent = handle
+	emitter.Parent = att
 
-	local RANGE, PUSH = 28, 70
-	tool.Activated:Connect(function()
+	local RANGE, PUSH, RECOIL = 32, 90, 45
+
+	local function stopBlowing()
+		holding = false
+		emitter.Rate = 0
+		wind:Stop()
+		if loopConn then loopConn:Disconnect() loopConn = nil end
+	end
+
+	local function startBlowing()
 		if holding then return end
+		local char = getChar()
+		local hrp = char:FindFirstChild("HumanoidRootPart")
 		holding = true
-		emitter.Rate = 120
-		while holding and tool.Parent do
+		emitter.Rate = 150
+		wind:Play()
+
+		local params = OverlapParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = { char }
+
+		local acc = 0
+		loopConn = RunService.Heartbeat:Connect(function(dt)
+			if not (holding and tool.Parent == char and handle.Parent) then return stopBlowing() end
 			local origin = handle.Position
-			local look = (mouse.Hit.Position - origin).Unit
-			for _, p in ipairs(workspace:GetPartBoundsInRadius(origin + look * (RANGE / 2), RANGE / 2)) do
-				if not p.Anchored and not p:IsDescendantOf(tool.Parent) then
-					local to = p.Position - origin
-					if to.Magnitude > 0.1 and to.Unit:Dot(look) > 0.75 then
-						p.AssemblyLinearVelocity = p.AssemblyLinearVelocity + look * PUSH * 0.2
+			local aim = mouse.Hit.Position - origin
+			if aim.Magnitude < 0.1 then return end
+			local look = aim.Unit
+			att.WorldCFrame = CFrame.lookAt(origin, origin + look)
+
+			-- recoil: the blast gently pushes you the other way
+			if hrp and hrp.Parent then
+				hrp.AssemblyLinearVelocity = hrp.AssemblyLinearVelocity - look * RECOIL * dt
+			end
+
+			-- push loose parts and other players in the cone (only parts your client owns will really move)
+			acc += dt
+			if acc >= 0.1 then
+				acc = 0
+				for _, p in ipairs(workspace:GetPartBoundsInRadius(origin + look * (RANGE / 2), RANGE / 2, params)) do
+					if not p.Anchored then
+						local to = p.Position - origin
+						if to.Magnitude > 0.1 and to.Unit:Dot(look) > 0.7 then
+							p.AssemblyLinearVelocity = p.AssemblyLinearVelocity + look * PUSH * 0.3
+						end
 					end
 				end
 			end
-			task.wait(0.1)
-		end
-	end)
-	local function off()
-		holding = false
-		emitter.Rate = 0
+		end)
 	end
-	tool.Deactivated:Connect(off)
-	tool.Unequipped:Connect(off)
+
+	tool.Activated:Connect(startBlowing)
+	tool.Deactivated:Connect(stopBlowing)
+	tool.Unequipped:Connect(stopBlowing)
+	tool.Destroying:Connect(stopBlowing)
 end
 
 -- ===== ROCKET LAUNCHER =====
