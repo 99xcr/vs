@@ -302,7 +302,7 @@ local function setupDryer(tool)
 	emitter.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 1) })
 	emitter.Color = ColorSequence.new(Color3.fromRGB(255, 225, 240))
 	emitter.LightEmission = 0.4
-	emitter.EmissionDirection = Enum.NormalId.Front
+	-- no direction property is set: the default emits along the attachment's up axis and we aim that axis below
 	emitter.Parent = att
 
 	local RANGE, PUSH, RECOIL, MAXSPEED = 34, 90, 160, 70
@@ -336,7 +336,7 @@ local function setupDryer(tool)
 			local aim = mouse.Hit.Position - origin
 			if aim.Magnitude < 0.1 then return end
 			local look = aim.Unit
-			att.WorldCFrame = CFrame.lookAt(origin, origin + look)
+			att.WorldCFrame = CFrame.lookAt(origin, origin + look) * CFrame.Angles(-math.pi / 2, 0, 0)
 
 			-- strong recoil: you get pushed the opposite way (aim down to lift yourself up)
 			if hrp and hrp.Parent then
@@ -614,7 +614,7 @@ local function buildGui()
 	round(bar, 12)
 	mk("TextLabel", {
 		Size = UDim2.new(1, -80, 1, 0), Position = UDim2.new(0, 12, 0, 0), BackgroundTransparency = 1,
-		Font = Enum.Font.GothamBold, Text = "VESTA GEARS", TextSize = 15, TextColor3 = Color3.new(1, 1, 1),
+		Font = Enum.Font.GothamBold, Text = "VESTA GEARS v3", TextSize = 15, TextColor3 = Color3.new(1, 1, 1),
 		TextXAlignment = Enum.TextXAlignment.Left,
 	}, bar)
 	local minBtn = mk("TextButton", {
