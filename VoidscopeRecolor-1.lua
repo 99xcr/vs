@@ -1,8 +1,9 @@
--- VESTA GEARS: Rainbow Carpet, Gold Carpet, Black Magic Carpet, Blow Dryer, Sea Bow,
--- Gravity Coil, Speed Coil, Rocket Launcher
--- Same method as the Crossbow of the Sea script: load the gear model with GetObjects,
--- delete its original scripts, then run our own logic on it.
--- If an asset ID is 0 (or fails to load) a simple built-in model is used, so every gear still works.
+-- VESTA GEARS MENU
+-- Real Roblox gears (loaded with GetObjects) + a menu to give / remove each one.
+-- Method is the same as the Crossbow of the Sea script: load the real model, delete its original
+-- scripts, and run our own logic on it. If an ID is blank or fails to load, a built-in model is used,
+-- so every gear still works.
+-- Menu: drag the title bar, "-" minimises, "X" closes the menu (gears stay), RightShift hides/shows.
 
 local Players = game:GetService("Players")
 local Debris = game:GetService("Debris")
@@ -12,15 +13,18 @@ local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local mouse = player:GetMouse()
 
--- ===== CONFIG: put the real asset IDs here (0 = use the built-in model) =====
+-- ===== GEAR LIST (IDs can also be changed live in the menu) =====
+-- id = 0 -> built-in model. rot = optional CFrame.Angles to turn a carpet model that loads sideways.
 local GEARS = {
-	{ name = "Rainbow Carpet",     kind = "carpet",  id = 0, color = "rainbow", speed = 90 },
-	{ name = "Gold Carpet",        kind = "carpet",  id = 0, color = Color3.fromRGB(255, 200, 40), speed = 70 },
-	{ name = "Black Magic Carpet", kind = "carpet",  id = 0, color = Color3.fromRGB(15, 15, 18), speed = 110 },
+	{ name = "Rainbow Carpet",     kind = "carpet",  id = 225921000,  speed = 90,  color = "rainbow", trail = "rainbow" },
+	{ name = "Gold Carpet",        kind = "carpet",  id = 1016183873, speed = 70,  color = Color3.fromRGB(255, 200, 40),
+		trail = ColorSequence.new(Color3.fromRGB(255, 200, 40), Color3.fromRGB(255, 240, 150)) },
+	{ name = "Black Magic Carpet", kind = "carpet",  id = 0,          speed = 110, color = Color3.fromRGB(15, 15, 18),
+		trail = ColorSequence.new(Color3.fromRGB(20, 0, 30), Color3.fromRGB(110, 0, 170)) },
 	{ name = "Blow Dryer",         kind = "dryer",   id = 0 },
 	{ name = "Sea Bow",            kind = "seabow",  id = 236438668 },
 	{ name = "Gravity Coil",       kind = "gravity", id = 16688968 },
-	{ name = "Speed Coil",         kind = "speed",   id = 99170 },
+	{ name = "Speed Coil",         kind = "speed",   id = 99119158 },
 	{ name = "Rocket Launcher",    kind = "rocket",  id = 0 },
 }
 
@@ -36,6 +40,14 @@ local function getHandle(tool)
 	return tool:FindFirstChild("Handle") or tool:FindFirstChildWhichIsA("BasePart", true)
 end
 
+local function rainbowSequence()
+	local keys = {}
+	for i = 0, 6 do
+		keys[#keys + 1] = ColorSequenceKeypoint.new(i / 6, Color3.fromHSV(i / 7, 1, 1))
+	end
+	return ColorSequence.new(keys)
+end
+
 local function tintInstance(root, color)
 	for _, d in ipairs(root:GetDescendants()) do
 		if d:IsA("MeshPart") or d:IsA("Part") or d:IsA("UnionOperation") then
@@ -44,7 +56,15 @@ local function tintInstance(root, color)
 			d.VertexColor = Vector3.new(color.R, color.G, color.B)
 		end
 	end
-	if root:IsA("BasePart") then root.Color = color end
+end
+
+local function addSound(parent, name, id, volume)
+	local s = Instance.new("Sound")
+	s.Name = name
+	s.SoundId = id
+	s.Volume = volume or 0.5
+	s.Parent = parent
+	return s
 end
 
 local function fallbackTool(cfg)
@@ -58,7 +78,6 @@ local function fallbackTool(cfg)
 	if cfg.kind == "carpet" then
 		h.Size = Vector3.new(4, 0.3, 6)
 		h.Color = (typeof(cfg.color) == "Color3") and cfg.color or Color3.new(1, 0, 0)
-		tool.GripPos = Vector3.new(0, 0, 0)
 	elseif cfg.kind == "dryer" then
 		h.Size = Vector3.new(0.8, 0.8, 1.8)
 		h.Color = Color3.fromRGB(220, 60, 120)
@@ -72,8 +91,9 @@ local function fallbackTool(cfg)
 	return tool
 end
 
+-- returns tool, reason (reason is nil when the real model was loaded)
 local function loadTool(cfg)
-	local tool
+	local tool, reason
 	if cfg.id and cfg.id ~= 0 then
 		local ok, objs = pcall(function()
 			return game:GetObjects("rbxassetid://" .. cfg.id)
@@ -84,9 +104,12 @@ local function loadTool(cfg)
 			else
 				tool = objs[1]:FindFirstChildWhichIsA("Tool", true)
 			end
+			if not tool then reason = "asset has no Tool inside" end
 		else
-			warn(cfg.name .. ": GetObjects failed, using built-in model.")
+			reason = "GetObjects failed"
 		end
+	else
+		reason = "no ID set"
 	end
 	if not tool then tool = fallbackTool(cfg) end
 	tool.Name = cfg.name
@@ -100,19 +123,11 @@ local function loadTool(cfg)
 		h.CanCollide = false
 		h.Parent = tool
 	end
-	return tool
+	tool:SetAttribute("Fallback", reason ~= nil)
+	return tool, reason
 end
 
-local function addSound(parent, name, id, volume)
-	local s = Instance.new("Sound")
-	s.Name = name
-	s.SoundId = id
-	s.Volume = volume or 0.5
-	s.Parent = parent
-	return s
-end
-
--- ===== CARPETS (fly with WASD / thumbstick, Space = up, Ctrl = down) =====
+-- ===== CARPETS (WASD / thumbstick to fly toward the camera, Space = up, Ctrl = down) =====
 local controls
 pcall(function()
 	controls = require(player.PlayerScripts:WaitForChild("PlayerModule", 3)):GetControls()
@@ -130,15 +145,14 @@ end
 
 local function setupCarpet(tool, cfg)
 	local handle = getHandle(tool)
-	local carpet, bv, bg, loop, dead
+	local model, bv, bg, loop
 
 	local function stop()
 		if loop then loop:Disconnect() loop = nil end
 		if bv then bv:Destroy() bv = nil end
 		if bg then bg:Destroy() bg = nil end
-		if carpet then carpet:Destroy() carpet = nil end
-		local char = player.Character
-		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if model then model:Destroy() model = nil end
+		local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 		if hum then hum.PlatformStand = false end
 		for _, p in ipairs(tool:GetDescendants()) do
 			if p:IsA("BasePart") then p.LocalTransparencyModifier = 0 end
@@ -152,21 +166,70 @@ local function setupCarpet(tool, cfg)
 		local hum = char:FindFirstChildOfClass("Humanoid")
 		if not (hrp and hum and handle) then return end
 
-		-- visible carpet under the feet, the held one is hidden
-		carpet = handle:Clone()
-		carpet.Name = "FlyingCarpet"
-		carpet.Anchored = false
-		carpet.CanCollide = false
-		carpet.Massless = true
-		carpet.CFrame = hrp.CFrame * CFrame.new(0, -2.9, 0)
-		carpet.Parent = char
-		local weld = Instance.new("WeldConstraint")
-		weld.Part0 = hrp
-		weld.Part1 = carpet
-		weld.Parent = carpet
+		-- copy every visible part of the real gear under the feet, then hide the held one
+		local base = hrp.CFrame * CFrame.new(0, -2.9, 0) * (cfg.rot or CFrame.new())
+		model = Instance.new("Model")
+		model.Name = "FlyingCarpet"
+		local root
+		for _, p in ipairs(tool:GetDescendants()) do
+			if p:IsA("BasePart") then
+				local c = p:Clone()
+				if c then
+					for _, d in ipairs(c:GetDescendants()) do
+						if d:IsA("Script") or d:IsA("LocalScript") or d:IsA("Weld")
+							or d:IsA("WeldConstraint") or d:IsA("Motor6D") then
+							d:Destroy()
+						end
+					end
+					c.Anchored = false
+					c.CanCollide = false
+					c.Massless = true
+					c.CFrame = base * handle.CFrame:ToObjectSpace(p.CFrame)
+					c.Parent = model
+					if p == handle then root = c end
+				end
+			end
+		end
+		if not root then model:Destroy() model = nil return end
+		model.PrimaryPart = root
+		for _, c in ipairs(model:GetChildren()) do
+			if c:IsA("BasePart") and c ~= root then
+				local w = Instance.new("WeldConstraint")
+				w.Part0 = root
+				w.Part1 = c
+				w.Parent = c
+			end
+		end
+		local seat = Instance.new("WeldConstraint")
+		seat.Part0 = hrp
+		seat.Part1 = root
+		seat.Parent = root
+		model.Parent = char
+
 		for _, p in ipairs(tool:GetDescendants()) do
 			if p:IsA("BasePart") then p.LocalTransparencyModifier = 1 end
 		end
+
+		-- trail
+		local half = root.Size * 0.45
+		local a0 = Instance.new("Attachment")
+		a0.Position = Vector3.new(-half.X, 0, half.Z)
+		a0.Parent = root
+		local a1 = Instance.new("Attachment")
+		a1.Position = Vector3.new(half.X, 0, half.Z)
+		a1.Parent = root
+		local trail = Instance.new("Trail")
+		trail.Attachment0 = a0
+		trail.Attachment1 = a1
+		trail.Lifetime = 1.2
+		trail.LightEmission = 0.6
+		trail.Transparency = NumberSequence.new(0.2, 1)
+		if cfg.trail == "rainbow" then
+			trail.Color = rainbowSequence()
+		elseif cfg.trail then
+			trail.Color = cfg.trail
+		end
+		trail.Parent = root
 
 		hum.PlatformStand = true
 		bv = Instance.new("BodyVelocity")
@@ -180,28 +243,28 @@ local function setupCarpet(tool, cfg)
 		bg.CFrame = hrp.CFrame
 		bg.Parent = hrp
 
+		local fallback = tool:GetAttribute("Fallback")
 		local hue = 0
 		loop = RunService.Heartbeat:Connect(function(dt)
-			if not (hrp.Parent and carpet) then return stop() end
+			if not (hrp.Parent and model) then return stop() end
 			local cam = workspace.CurrentCamera.CFrame
 			local mv = getMove()
 			local dir = cam.RightVector * mv.X + cam.LookVector * -mv.Z
 			if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3.yAxis end
 			if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir -= Vector3.yAxis end
-			if dir.Magnitude > 0.05 then
-				bv.Velocity = dir.Unit * cfg.speed
-			else
-				bv.Velocity = Vector3.zero
-			end
+			bv.Velocity = (dir.Magnitude > 0.05) and (dir.Unit * cfg.speed) or Vector3.zero
 			local flat = Vector3.new(cam.LookVector.X, 0, cam.LookVector.Z)
 			if flat.Magnitude > 0.01 then
 				bg.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flat)
 			end
-			if cfg.color == "rainbow" then
-				hue = (hue + dt * 0.4) % 1
-				tintInstance(carpet, Color3.fromHSV(hue, 1, 1))
-			elseif typeof(cfg.color) == "Color3" then
-				tintInstance(carpet, cfg.color)
+			-- real models keep their own look; the built-in carpet gets the colour effect
+			if fallback then
+				if cfg.color == "rainbow" then
+					hue = (hue + dt * 0.4) % 1
+					tintInstance(model, Color3.fromHSV(hue, 1, 1))
+				elseif typeof(cfg.color) == "Color3" then
+					tintInstance(model, cfg.color)
+				end
 			end
 		end)
 	end
@@ -235,6 +298,11 @@ end
 
 local function setupSpeed(tool)
 	local old
+	local function restore()
+		local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+		if hum and old then hum.WalkSpeed = old end
+		old = nil
+	end
 	tool.Equipped:Connect(function()
 		local hum = getChar():FindFirstChildOfClass("Humanoid")
 		if hum then
@@ -242,14 +310,11 @@ local function setupSpeed(tool)
 			hum.WalkSpeed = 40
 		end
 	end)
-	tool.Unequipped:Connect(function()
-		local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-		if hum and old then hum.WalkSpeed = old end
-		old = nil
-	end)
+	tool.Unequipped:Connect(restore)
+	tool.Destroying:Connect(restore)
 end
 
--- ===== BLOW DRYER (hold click: wind pushes things in front) =====
+-- ===== BLOW DRYER (hold click: wind pushes loose parts in front of you) =====
 local function setupDryer(tool)
 	local handle = getHandle(tool)
 	local holding = false
@@ -284,14 +349,12 @@ local function setupDryer(tool)
 			task.wait(0.1)
 		end
 	end)
-	tool.Deactivated:Connect(function()
+	local function off()
 		holding = false
 		emitter.Rate = 0
-	end)
-	tool.Unequipped:Connect(function()
-		holding = false
-		emitter.Rate = 0
-	end)
+	end
+	tool.Deactivated:Connect(off)
+	tool.Unequipped:Connect(off)
 end
 
 -- ===== ROCKET LAUNCHER =====
@@ -307,14 +370,13 @@ local function setupRocket(tool)
 		handle.Shot.Pitch = math.random(90, 110) / 100
 		handle.Shot:Play()
 
-		local target = mouse.Hit.Position
 		local rocket = Instance.new("Part")
 		rocket.Name = "Rocket"
 		rocket.Size = Vector3.new(0.6, 0.6, 3)
 		rocket.Color = Color3.fromRGB(200, 60, 40)
 		rocket.Material = Enum.Material.Metal
 		rocket.CanCollide = false
-		rocket.CFrame = CFrame.new(handle.Position, target)
+		rocket.CFrame = CFrame.new(handle.Position, mouse.Hit.Position)
 		rocket.Parent = workspace
 		local bf = Instance.new("BodyForce")
 		bf.Force = Vector3.new(0, rocket:GetMass() * workspace.Gravity, 0)
@@ -337,11 +399,11 @@ local function setupRocket(tool)
 			ex.DestroyJointRadiusPercent = 0
 			ex.Parent = workspace
 			rocket.Hit:Play()
-			-- rocket jump: blast knocks you back if you are close
+			-- rocket jump
 			local hrp = char:FindFirstChild("HumanoidRootPart")
 			if hrp then
 				local d = hrp.Position - pos
-				if d.Magnitude < 14 then
+				if d.Magnitude < 14 and d.Magnitude > 0.01 then
 					hrp.AssemblyLinearVelocity = hrp.AssemblyLinearVelocity + d.Unit * (90 * (1 - d.Magnitude / 14) + 20)
 				end
 			end
@@ -412,7 +474,7 @@ local function setupSeaBow(tool)
 	end)
 end
 
--- smoother jump out of water (shared by all gears, connected once)
+-- smoother jump out of water while the Sea Bow is equipped
 do
 	local JUMP_POWER, BOOST_FRAMES = 78, 8
 	UserInputService.JumpRequest:Connect(function()
@@ -439,28 +501,247 @@ do
 	end)
 end
 
--- ===== give everything (and again after every respawn) =====
+-- ===== give / remove =====
 local SETUP = {
 	carpet = setupCarpet, dryer = setupDryer, seabow = setupSeaBow,
 	gravity = setupGravity, speed = setupSpeed, rocket = setupRocket,
 }
 
-local function giveAll()
-	local backpack = player:WaitForChild("Backpack")
-	for _, cfg in ipairs(GEARS) do
-		local ok, err = pcall(function()
-			local tool = loadTool(cfg)
-			SETUP[cfg.kind](tool, cfg)
-			tool.Parent = backpack
-		end)
-		if not ok then warn(cfg.name .. " failed: " .. tostring(err)) end
-	end
+local active = {} -- name -> tool
+local wanted = {} -- name -> true (given again after respawn)
+
+local function removeGear(cfg)
+	wanted[cfg.name] = nil
+	local t = active[cfg.name]
+	if t then pcall(function() t:Destroy() end) end
+	active[cfg.name] = nil
 end
 
-giveAll()
+-- returns ok, message
+local function giveGear(cfg)
+	removeGear(cfg)
+	local backpack = player:WaitForChild("Backpack")
+	local result, reason
+	local ok, err = pcall(function()
+		local tool, why = loadTool(cfg)
+		SETUP[cfg.kind](tool, cfg)
+		tool.Parent = backpack
+		active[cfg.name] = tool
+		reason = why
+	end)
+	if not ok then
+		return false, cfg.name .. " failed: " .. tostring(err)
+	end
+	wanted[cfg.name] = true
+	if reason then
+		return true, cfg.name .. ": built-in model (" .. reason .. ")"
+	end
+	return true, cfg.name .. ": real Roblox gear loaded"
+end
+
+-- ===== MENU =====
+local rows = {}
+local statusLabel
+
+local function status(msg)
+	if statusLabel then statusLabel.Text = msg end
+end
+
+local function buildGui()
+	local genv = (getgenv and getgenv()) or _G
+	if genv.VestaGearsGui then pcall(function() genv.VestaGearsGui:Destroy() end) end
+
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "VestaGears"
+	gui.ResetOnSpawn = false
+	gui.DisplayOrder = 999
+	local okParent = pcall(function()
+		gui.Parent = (gethui and gethui()) or game:GetService("CoreGui")
+	end)
+	if not okParent or not gui.Parent then
+		gui.Parent = player:WaitForChild("PlayerGui")
+	end
+	genv.VestaGearsGui = gui
+
+	local function mk(class, props, parent)
+		local o = Instance.new(class)
+		for k, v in pairs(props) do o[k] = v end
+		o.Parent = parent
+		return o
+	end
+	local function round(o, r)
+		mk("UICorner", { CornerRadius = UDim.new(0, r or 8) }, o)
+	end
+
+	local BG = Color3.fromRGB(14, 14, 20)
+	local PANEL = Color3.fromRGB(26, 26, 38)
+	local ACCENT = Color3.fromRGB(120, 90, 230)
+	local OFF = Color3.fromRGB(46, 46, 64)
+
+	local frame = mk("Frame", {
+		Name = "Main", Size = UDim2.new(0, 340, 0, 372), Position = UDim2.new(0.5, -170, 0.5, -186),
+		BackgroundColor3 = BG, BorderSizePixel = 0, Active = true,
+	}, gui)
+	round(frame, 12)
+	mk("UIStroke", { Color = ACCENT, Thickness = 1.5, Transparency = 0.3 }, frame)
+
+	-- title bar (drag handle)
+	local bar = mk("Frame", { Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = PANEL, BorderSizePixel = 0 }, frame)
+	round(bar, 12)
+	mk("TextLabel", {
+		Size = UDim2.new(1, -80, 1, 0), Position = UDim2.new(0, 12, 0, 0), BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold, Text = "VESTA GEARS", TextSize = 15, TextColor3 = Color3.new(1, 1, 1),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, bar)
+	local minBtn = mk("TextButton", {
+		Size = UDim2.new(0, 28, 0, 24), Position = UDim2.new(1, -66, 0, 5), BackgroundColor3 = OFF,
+		Font = Enum.Font.GothamBold, Text = "-", TextSize = 16, TextColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0,
+	}, bar)
+	round(minBtn, 6)
+	local closeBtn = mk("TextButton", {
+		Size = UDim2.new(0, 28, 0, 24), Position = UDim2.new(1, -34, 0, 5), BackgroundColor3 = Color3.fromRGB(125, 30, 30),
+		Font = Enum.Font.GothamBold, Text = "X", TextSize = 14, TextColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0,
+	}, bar)
+	round(closeBtn, 6)
+
+	local dragging, dragStart, startPos
+	bar.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = frame.Position
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			local d = input.Position - dragStart
+			frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end)
+
+	local body = mk("Frame", { Size = UDim2.new(1, 0, 1, -34), Position = UDim2.new(0, 0, 0, 34), BackgroundTransparency = 1 }, frame)
+
+	local list = mk("ScrollingFrame", {
+		Size = UDim2.new(1, -16, 1, -92), Position = UDim2.new(0, 8, 0, 8), BackgroundTransparency = 1,
+		BorderSizePixel = 0, ScrollBarThickness = 4, CanvasSize = UDim2.new(0, 0, 0, 0),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	}, body)
+	mk("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, list)
+
+	for i, cfg in ipairs(GEARS) do
+		local row = mk("Frame", { Size = UDim2.new(1, -6, 0, 34), BackgroundColor3 = PANEL, BorderSizePixel = 0, LayoutOrder = i }, list)
+		round(row, 8)
+		mk("TextLabel", {
+			Size = UDim2.new(0.38, 0, 1, 0), Position = UDim2.new(0, 8, 0, 0), BackgroundTransparency = 1,
+			Font = Enum.Font.GothamMedium, Text = cfg.name, TextSize = 12, TextColor3 = Color3.new(1, 1, 1),
+			TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+		}, row)
+		local box = mk("TextBox", {
+			Size = UDim2.new(0.32, 0, 0, 24), Position = UDim2.new(0.4, 0, 0, 5), BackgroundColor3 = BG,
+			Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = Color3.new(1, 1, 1),
+			PlaceholderText = "ID (blank = built-in)", PlaceholderColor3 = Color3.fromRGB(120, 120, 140),
+			Text = (cfg.id ~= 0) and tostring(cfg.id) or "", ClearTextOnFocus = false, BorderSizePixel = 0,
+		}, row)
+		round(box, 6)
+		local btn = mk("TextButton", {
+			Size = UDim2.new(0.24, 0, 0, 24), Position = UDim2.new(0.74, 0, 0, 5), BackgroundColor3 = OFF,
+			Font = Enum.Font.GothamBold, Text = "GIVE", TextSize = 11, TextColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0,
+		}, row)
+		round(btn, 6)
+
+		local function setOn(on)
+			btn.Text = on and "REMOVE" or "GIVE"
+			btn.BackgroundColor3 = on and ACCENT or OFF
+		end
+		rows[cfg.name] = { setOn = setOn, box = box, cfg = cfg }
+
+		btn.MouseButton1Click:Connect(function()
+			local t = active[cfg.name]
+			if t and t.Parent then
+				removeGear(cfg)
+				setOn(false)
+				status(cfg.name .. " removed")
+			else
+				cfg.id = tonumber(string.match(box.Text, "%d+")) or 0
+				local _, msg = giveGear(cfg)
+				setOn(active[cfg.name] ~= nil)
+				status(msg)
+			end
+		end)
+	end
+
+	local function footerButton(text, x, color)
+		local b = mk("TextButton", {
+			Size = UDim2.new(0.5, -12, 0, 28), Position = UDim2.new(x, x == 0 and 8 or 4, 1, -76), BackgroundColor3 = color,
+			Font = Enum.Font.GothamBold, Text = text, TextSize = 12, TextColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0,
+		}, body)
+		round(b, 8)
+		return b
+	end
+	local giveAllBtn = footerButton("GIVE ALL", 0, ACCENT)
+	local removeAllBtn = footerButton("REMOVE ALL", 0.5, Color3.fromRGB(125, 30, 30))
+
+	statusLabel = mk("TextLabel", {
+		Size = UDim2.new(1, -16, 0, 32), Position = UDim2.new(0, 8, 1, -40), BackgroundTransparency = 1,
+		Font = Enum.Font.Gotham, Text = "Pick a gear, then equip it from your hotbar.", TextSize = 11,
+		TextColor3 = Color3.fromRGB(190, 190, 210), TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
+	}, body)
+
+	giveAllBtn.MouseButton1Click:Connect(function()
+		local real, built = 0, 0
+		for _, cfg in ipairs(GEARS) do
+			local r = rows[cfg.name]
+			cfg.id = tonumber(string.match(r.box.Text, "%d+")) or 0
+			local ok, msg = giveGear(cfg)
+			r.setOn(active[cfg.name] ~= nil)
+			if ok then
+				if string.find(msg, "built%-in") then built += 1 else real += 1 end
+			end
+		end
+		status(("All given: %d real gears, %d built-in."):format(real, built))
+	end)
+	removeAllBtn.MouseButton1Click:Connect(function()
+		for _, cfg in ipairs(GEARS) do
+			removeGear(cfg)
+			rows[cfg.name].setOn(false)
+		end
+		status("All gears removed")
+	end)
+
+	local collapsed = false
+	minBtn.MouseButton1Click:Connect(function()
+		collapsed = not collapsed
+		body.Visible = not collapsed
+		frame.Size = collapsed and UDim2.new(0, 340, 0, 34) or UDim2.new(0, 340, 0, 372)
+	end)
+	closeBtn.MouseButton1Click:Connect(function()
+		gui:Destroy()
+	end)
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if processed then return end
+		if input.KeyCode == Enum.KeyCode.RightShift and gui.Parent then
+			frame.Visible = not frame.Visible
+		end
+	end)
+end
+
+buildGui()
+
+-- give the chosen gears again after every respawn
 player.CharacterAdded:Connect(function()
 	task.wait(1)
-	giveAll()
+	for _, cfg in ipairs(GEARS) do
+		if wanted[cfg.name] then
+			giveGear(cfg)
+			if rows[cfg.name] then rows[cfg.name].setOn(active[cfg.name] ~= nil) end
+		end
+	end
 end)
 
-print("Vesta Gears ready: Rainbow/Gold/Black carpets, Blow Dryer, Sea Bow, Gravity Coil, Speed Coil, Rocket Launcher")
+print("Vesta Gears menu ready")
